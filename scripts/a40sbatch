@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name=ezv2atari
+#SBATCH --gres=gpu:a40:1
+#SBATCH --time=12:00:00
+#SBATCH -c 16
+#SBATCH --mem=64G
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
+
+# prepare your environment here
+source ~/.bashrc
+conda deactivate
+conda activate ezv2
+export MUJOCO_GL=egl
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+# cd research/EfficientZeroV2
+
+# put your command here
+python ez/train.py exp_config=ez/config/exp/dmc_modem.yaml
