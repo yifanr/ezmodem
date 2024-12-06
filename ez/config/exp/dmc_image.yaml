@@ -4,10 +4,10 @@ agent_name: dmc_image_agent
 # env setting
 env:
   env: DMC
-  game: walker_run
+  game: quadruped_run
   base_seed: 0
   n_skip: 2
-  n_stack: 4
+  n_stack: 2
   max_episode_steps: 500
   gray_scale: False
   image_based: True
@@ -46,9 +46,9 @@ train:
   load_model_path: ''
   use_demo: False
   batch_size: 256
-  training_steps: 200000        # 100 * 1000
+  training_steps: 100000        # 100 * 1000
   offline_training_steps: 20000     # 20 * 1000
-  start_transitions: 2000       # 2 * 1000
+  start_transitions: 5000       # 2 * 1000
 
   eval_n_episode: 10
   eval_interval: 5000
@@ -87,8 +87,8 @@ train:
 # self-play data collection
 data:
   num_envs: 4
-  buffer_size: 200000      # 1 * 1000 * 1000
-  total_transitions: 200000 # 1000 * 1000
+  buffer_size: 100000      # 1 * 1000 * 1000
+  total_transitions: 100000 # 1000 * 1000
   top_transitions: 2e5
   trajectory_size: 100   # prev 500
   save_video: False

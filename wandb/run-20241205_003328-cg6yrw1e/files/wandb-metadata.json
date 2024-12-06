@@ -1,0 +1,127 @@
+{
+    "os": "Linux-6.8.0-49-generic-x86_64-with-glibc2.17",
+    "python": "3.8.19",
+    "heartbeatAt": "2024-12-05T05:33:28.595407",
+    "startedAt": "2024-12-05T05:33:28.130955",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "exp_config=ez/config/exp/dmc_modem.yaml"
+    ],
+    "state": "running",
+    "program": "ez/train.py",
+    "codePath": "ez/train.py",
+    "git": {
+        "remote": "https://github.com/yifanr/ezmodem.git",
+        "commit": "d0b551a4a844570c0f6b4c72a56ccde12d0fd236"
+    },
+    "email": "ruanyifan1@gmail.com",
+    "root": "/home/electroshk/Documents/research/ezmodem",
+    "host": "yifan-ubuntu",
+    "username": "electroshk",
+    "executable": "/home/electroshk/anaconda3/envs/ezv2/bin/python",
+    "cpu_count": 8,
+    "cpu_count_logical": 16,
+    "cpu_freq": {
+        "current": 4700.0105,
+        "min": 800.0,
+        "max": 5000.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 4699.899,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4699.997,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4703.253,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.005,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4703.771,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4690.459,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.596,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.024,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.04,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4698.066,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.181,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4701.72,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4701.908,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.0,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4700.041,
+            "min": 800.0,
+            "max": 5000.0
+        },
+        {
+            "current": 4699.731,
+            "min": 800.0,
+            "max": 5000.0
+        }
+    ],
+    "disk": {
+        "total": 59.77511978149414,
+        "used": 25.756004333496094
+    },
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4090",
+            "memory_total": 25757220864
+        }
+    ],
+    "memory": {
+        "total": 46.977237701416016
+    }
+}

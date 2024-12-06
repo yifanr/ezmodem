@@ -189,6 +189,7 @@ class DataWorker(Worker):
                     if len(game_trajs[i]) > 0:
                         # save current trajectory
                         game_trajs[i].pad_over([], [], [], [], [])
+                        
                         game_trajs[i].save_to_memory()
                         self.put_trajs(game_trajs[i])
 

@@ -232,7 +232,7 @@ class GameTrajectory:
                 return [np.ones((self.obs_shape[1], self.obs_shape[2], self.obs_shape[0]), dtype=np.uint8)
                         for _ in range(n_stack)]
         else:
-            return [np.ones(self.obs_shape, dtype=np.float32) for _ in range(n_stack)]
+            return np.array([np.ones(self.obs_shape, dtype=np.float32) for _ in range(n_stack)])
 
     def get_current_stacked_obs(self):
         # return the current stacked observation of correct format for model inference

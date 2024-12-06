@@ -23,11 +23,13 @@ from ez.utils.distribution import SquashedNormal, TruncatedNormal, ContDist
 from ez.utils.format import formalize_obs_lst, DiscreteSupport, LinearSchedule, prepare_obs_lst, allocate_gpu, profile, symexp
 from ez.data.trajectory import GameTrajectory
 from ez.mcts.cy_mcts import Gumbel_MCTS
+from ez.data.replay_buffer import ReplayBuffer
+from ez.data.trajectory import GameTrajectory
 
 @ray.remote(num_gpus=0.03)
 # @ray.remote(num_gpus=0.14)
 class BatchWorker(Worker):
-    def __init__(self, rank, agent, replay_buffer, storage, batch_storage, config):
+    def __init__(self, rank, agent, replay_buffer, storage, batch_storage, config, expert_buffer: ReplayBuffer =None):
         super().__init__(rank, agent, replay_buffer, storage, config)
 
         self.model_update_interval = config.train.reanalyze_update_interval
@@ -61,6 +63,31 @@ class BatchWorker(Worker):
         self.mixed_value_threshold = self.config.train.mixed_value_threshold
         self.lstm_hidden_size = self.config.model.lstm_hidden_size
         self.cnt = 0
+        
+        self.expert_buffer = expert_buffer  # Store reference to expert buffer
+        
+        # Parse demo schedule if using demos
+        if expert_buffer is not None and config.train.demo_schedule:
+            schedule = config.train.demo_schedule
+            if isinstance(schedule, str) and schedule.startswith('linear'):
+                # Parse linear(start, end, steps) format
+                params = schedule[7:-1].split(',')  # Remove 'linear(' and ')'
+                self.demo_start_ratio = float(params[0])
+                self.demo_end_ratio = float(params[1])
+                self.demo_schedule_steps = float(params[2])
+            else:
+                self.demo_start_ratio = float(schedule)
+                self.demo_end_ratio = float(schedule)
+                self.demo_schedule_steps = float('inf')
+    
+    def get_demo_ratio(self, trained_steps):
+        """Calculate current demo ratio based on schedule."""
+        if self.expert_buffer is None:
+            return 0.0
+            
+        progress = min(1.0, trained_steps / self.demo_schedule_steps)
+        return self.demo_start_ratio + (self.demo_end_ratio - self.demo_start_ratio) * progress
+
 
     def concat_trajs(self, items):
         obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
@@ -132,20 +159,78 @@ class BatchWorker(Worker):
 
     # @torch.no_grad()
     # @profile
+    
     def make_batch(self, trained_steps, cnt, real_time=False):
         beta = self.beta_schedule.value(trained_steps)
         batch_size = self.batch_size
 
+        # Calculate demo ratio for this batch
+        demo_ratio = self.get_demo_ratio(trained_steps)
+        demo_batch_size = int(batch_size * demo_ratio)
+        online_batch_size = batch_size - demo_batch_size
+
+
         # obtain the batch context from replay buffer
         x = time.time()
-        batch_context = ray.get(
-            self.replay_buffer.prepare_batch_context.remote(batch_size=batch_size,
-                                                            alpha=self.PER_alpha,
-                                                            beta=beta,
-                                                            rank=self.rank,
-                                                            cnt=cnt)
-        )
-        batch_context, validation_flag = batch_context
+        # Get online data batch
+        if online_batch_size > 0:
+            online_context = ray.get(
+                self.replay_buffer.prepare_batch_context.remote(
+                    batch_size=online_batch_size,
+                    alpha=self.PER_alpha,
+                    beta=beta,
+                    rank=self.rank,
+                    cnt=cnt
+                )
+            )
+            online_context, validation_flag = online_context
+        else:
+            online_context = None
+
+        # Get demo data batch
+        if demo_batch_size > 0 and self.expert_buffer is not None:
+            demo_context = ray.get(
+                self.expert_buffer.prepare_batch_context.remote(
+                    batch_size=demo_batch_size,
+                    alpha=self.PER_alpha,
+                    beta=beta,
+                    rank=self.rank,
+                    cnt=cnt
+                )
+            )
+            demo_context, _ = demo_context
+        else:
+            demo_context = None
+
+        # Combine batches
+        # [obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts]
+        
+        
+        if online_context is not None and demo_context is not None:
+            # Unpack contexts
+            traj_lst = []
+            for i in range(len(online_context[0])):
+                # print(f"Item {i}:")
+                # print(f"  Online shape: {np.array(online_context[0][i]).shape}")
+                # print(f"  Demo shape: {np.array(demo_context[0][i]).shape}")
+                # print(f"  Online type: {type(online_context[0][i])}")
+                # print(f"  Demo type: {type(demo_context[0][i])}")
+                # if i != 0:
+                #     for j in range(5):
+                #         print(f"  Online shape: {np.array(online_context[0][i][j]).shape}")
+                #         print(f"  Demo shape: {np.array(demo_context[0][i][j]).shape}")
+                traj_lst.append(online_context[0][i] + demo_context[0][i])
+            transition_pos_lst = online_context[1] + demo_context[1]
+            indices_lst = np.concatenate([online_context[2], demo_context[2]])
+            weights_lst = np.concatenate([online_context[3], demo_context[3]])
+            make_time_lst = online_context[4] + demo_context[4]
+            transition_num = online_context[5]  # Use online transition count
+            prior_lst = np.concatenate([online_context[6], demo_context[6]])
+            batch_context = [traj_lst, transition_pos_lst, indices_lst, weights_lst, 
+                           make_time_lst, transition_num, prior_lst]
+        else:
+            batch_context = online_context if online_context is not None else demo_context
+
 
         ray_time = time.time() - x
         traj_lst, transition_pos_lst, indices_lst, weights_lst, make_time_lst, transition_num, prior_lst = batch_context
@@ -971,7 +1056,15 @@ class BatchWorker(Worker):
 
     def efficient_inference(self, obs_lst, only_value=False, value_idx=0):
         batch_size = len(obs_lst)
-        obs_lst = np.asarray(obs_lst)
+
+        #TODO: temporary fix only?
+        # print("Before stacking, shapes:")
+        # for i, obs in enumerate(obs_lst):
+        #     if not isinstance(obs, list) (obs.shape != (2, 224, 224, 3)):
+        #         print(f"Index {i}: array of shape {obs.shape}")
+                
+        obs_lst = [np.asarray(obs) if isinstance(obs, list) else obs for obs in obs_lst]
+        obs_lst = np.stack(obs_lst)
         state_lst, value_lst, policy_lst = [], [], []
         # split a full batch into slices of mini_infer_size
         mini_batch = self.config.train.mini_batch_size
@@ -1004,11 +1097,11 @@ class BatchWorker(Worker):
 # ======================================================================================================================
 # batch worker
 # ======================================================================================================================
-def start_batch_worker(rank, agent, replay_buffer, storage, batch_storage, config):
+def start_batch_worker(rank, agent, replay_buffer, storage, batch_storage, config, expert_buffer=None):
     """
     Start a GPU batch worker. Call this method remotely.
     """
-    worker = BatchWorker.remote(rank, agent, replay_buffer, storage, batch_storage, config)
+    worker = BatchWorker.remote(rank, agent, replay_buffer, storage, batch_storage, config, expert_buffer)
     print(f"[Batch worker GPU] Starting batch worker GPU {rank} at process {os.getpid()}.")
     worker.run.remote()
 

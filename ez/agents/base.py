@@ -28,6 +28,9 @@ from ez.utils.format import get_ddp_model_weights, DiscreteSupport, symexp
 from ez.utils.loss import kl_loss, cosine_similarity_loss, continuous_loss, symlog_loss, Value_loss
 from ez.data.trajectory import GameTrajectory
 from ez.data.augmentation import Transforms
+from ez import mcts
+from ez.utils.format import formalize_obs_lst, prepare_obs_lst
+from ez.utils.loader import concat_trajs
 
 def DDP_setup(**kwargs):
     # set master nod
@@ -55,7 +58,6 @@ class Agent:
     def update_config(self):
         raise NotImplementedError
     
-    
     def init_bc(self, expert_buffer, config):
         """Initialize policy using behavioral cloning on expert demonstrations."""
         model = self.build_model().cuda()
@@ -63,7 +65,7 @@ class Agent:
         
         optimizer = torch.optim.Adam(
             model.parameters(),
-            lr=config.optimizer.get('bc_lr', 1e-4),
+            lr=config.optimizer.get('bc_lr', 3e-4),
             weight_decay=config.optimizer.weight_decay
         )
         
@@ -93,31 +95,37 @@ class Agent:
             
             # Unpack batch
             batch_context, _ = batch_context
-            [obs_lst, reward_lst, policy_lst, action_lst, *_], transition_pos_lst, *_ = batch_context
+            traj_lst, transition_pos_lst, *_ = batch_context
+            [obs_lst, reward_lst, policy_lst, action_lst, *_] = traj_lst
+            
+            traj_lst = concat_trajs(config, traj_lst)
+            
             obs = ray.get(obs_lst[0])[0]  # Get first observation from first trajectory
             
             # Process both observations and actions
-            if self.config.env.image_based:
-                stacked_obs = []
-                target_actions = []
-                for b in range(len(obs_lst)):
-                    pos = transition_pos_lst[b]
-                    # Get observations
-                    obs_traj = ray.get(obs_lst[b])
-                    frames = obs_traj[pos:pos + self.config.env.n_stack]
-                    stacked = np.concatenate(frames, axis=0)
-                    stacked_obs.append(stacked)
-                    # Get corresponding action
-                    action = action_lst[b][pos]  # Get action at the same position
-                    target_actions.append(action)
+            # if self.config.env.image_based:
+            stacked_obs = []
+            target_actions = []
+            for b in range(len(obs_lst)):
+                pos = transition_pos_lst[b]
+                traj: GameTrajectory = traj_lst[b]
+                stacked_obs.append(traj.get_index_stacked_obs(pos, extra=-config.rl.unroll_steps, padding=True))
+                # print(f"Single stacked obs shape: {stacked_obs[-1].shape}")
+                # Get corresponding action
+                action = action_lst[b][pos]  # Get action at the same position
+                target_actions.append(action)
 
-                obs_batch = torch.from_numpy(np.array(stacked_obs)).cuda().float() / 255.
-                action_batch = torch.from_numpy(np.array(target_actions)).float().cuda()
+            print(f"Batch obs shape: {np.array(stacked_obs).shape}")
+
+            obs_batch = formalize_obs_lst(stacked_obs, config.env.image_based)
+
+            # obs_batch = torch.from_numpy(np.array(stacked_obs)).cuda().float() / 255.
+            action_batch = torch.from_numpy(np.array(target_actions)).float().cuda()
                 
-            else:
-                obs_batch = torch.from_numpy(
-                    np.array([ray.get(obs) for obs in obs_lst])
-                ).cuda().float()
+            # else:
+            #     obs_batch = torch.from_numpy(
+            #         np.array([ray.get(obs) for obs in obs_lst])
+            #     ).cuda().float()
                 
                 
             # Forward pass
@@ -149,10 +157,10 @@ class Agent:
                 
         print("Behavioral cloning completed")
         
-        return model
+        return self.get_weights(model)
 
 
-    def train(self, rank, replay_buffer, storage, batch_storage, logger, pretrained_model=None):
+    def train(self, rank, replay_buffer, storage, batch_storage, logger, pretrained_weights=None):
         assert self._update
         # update image augmentation transform
         self.update_augmentation_transform()
@@ -170,11 +178,11 @@ class Agent:
             train_logger.info('save model in: {}'.format(model_path))
 
         # prepare model
-        if pretrained_model is not None:
-            model = pretrained_model
+        model = self.build_model().cuda()
+        
+        if pretrained_weights is not None:
+            model.load_state_dict(pretrained_weights)
             print("Using pretrained model from behavior cloning")
-        else:
-            model = self.build_model().cuda()
             
         target_model = self.build_model().cuda()
         # load model
@@ -1025,3 +1033,22 @@ def train_ddp(agent, rank, replay_buffer, storage, batch_storage, logger):
     storage.set_weights.remote(final_weights, 'self_play')
 
     return final_weights, model
+
+def get_demo_ratio(self, step_count):
+    """Calculate demonstration ratio based on linear schedule."""
+    if not hasattr(self.config.train, 'demo_schedule'):
+        return 0.0
+        
+    schedule = self.config.train.demo_schedule
+    if isinstance(schedule, str) and schedule.startswith('linear'):
+        # Parse linear(start, end, steps) format
+        params = schedule[7:-1].split(',')  # Remove 'linear(' and ')'
+        start_ratio = float(params[0])
+        end_ratio = float(params[1])
+        schedule_steps = float(params[2])
+        
+        # Calculate current ratio
+        progress = min(1.0, step_count / schedule_steps)
+        return start_ratio + (end_ratio - start_ratio) * progress
+    
+    return float(schedule)  # Handle case where it's just a number
