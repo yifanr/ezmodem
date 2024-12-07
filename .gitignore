@@ -15,6 +15,6 @@ __pycache__/
 /results
 /files
 /test*
-/demonstrations
-/wandb
+/demonstrations*
+/wandb*
 
