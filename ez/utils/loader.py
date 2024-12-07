@@ -94,46 +94,52 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
                 traj.store_search_results(value_estimate, value_estimate, policy)
                 traj.snapshot_lst.append([])
 
-            # Pad from next trajectory if available
-            # if config.model.value_target == 'bootstrapped':
-            #     gap_step = config.env.n_stack + config.rl.td_steps
-            # else:
-            #     extra = max(0, min(int(1 / (1 - config.rl.td_lambda)), config.model.GAE_max_steps) - config.rl.unroll_steps - 1)
-            #     gap_step = config.env.n_stack + 1 + extra + 1
-                
-            # if end_idx < len(actions):
-
-            #     next_start = end_idx
-            #     pad_obs = observations[next_start:next_start + config.rl.unroll_steps]
-            #     pad_rewards = rewards[next_start:next_start + gap_step - 1] 
-            #     pad_values = [value_estimate] * gap_step
-            #     pad_policies = [policy] * config.rl.unroll_steps
-                
-            #     traj.pad_over(pad_obs, pad_rewards, pad_values, pad_values, pad_policies)
-            # else:
-            #     traj.pad_over([], [], [], [], [])
-
-            #take 2
 
             if config.model.value_target == 'bootstrapped':
-                gap_step = config.env.n_stack + config.rl.td_steps
+                extra = config.rl.td_steps
             else:
-                extra = max(0, min(int(1 / (1 - config.rl.td_lambda)), config.model.GAE_max_steps) - config.rl.unroll_steps - 1)
-                gap_step = config.env.n_stack + 1 + extra + 1
+                # For GAE, need enough steps for lambda-returns
+                extra = max(0, min(int(1 / (1 - config.rl.td_lambda)), 
+                                 config.model.GAE_max_steps) - config.rl.unroll_steps - 1)
 
-            beg_index = config.env.n_stack
-            end_index = beg_index + config.rl.unroll_steps
+            # Total padding needed for bootstrapping
+            pad_length = config.env.n_stack + extra + 1
 
-            pad_obs = observations[beg_index:end_index]
+            # Get padding data from next trajectory if available
+            if end_idx + pad_length <= len(observations):
+                pad_obs = observations[end_idx:end_idx + config.rl.unroll_steps]
+                pad_rewards = rewards[end_idx:end_idx + pad_length - 1]
+                
+                # Calculate value estimates for padding region
+                remaining_rewards = rewards[end_idx:]
+                discounts = np.array([config.rl.discount**i for i in range(len(remaining_rewards))])
+                pad_values = np.ones(pad_length) * np.sum(remaining_rewards * discounts)
+                
+                # Use same policy distribution for padding
+                pad_policies = []
+                for _ in range(config.rl.unroll_steps):
+                    policy = np.zeros(config.mcts.num_top_actions)
+                    policy[0] = 0.9
+                    policy[1:] = 0.1 / (config.mcts.num_top_actions - 1)
+                    pad_policies.append(policy)
 
-            pad_policies = policy[0:config.rl.unroll_steps]
-            pad_values = [value_estimate] * gap_step
-            pad_rewards = rewards[0:gap_step - 1]
+            else:
+                # If we don't have enough future data, pad with zeros/last frame
+                last_obs = observations[end_idx - 1]
+                pad_obs = np.array([last_obs] * config.rl.unroll_steps)
+                pad_rewards = np.zeros(pad_length - 1)
+                pad_values = np.zeros(pad_length)
+                
+                pad_policies = []
+                for _ in range(config.rl.unroll_steps):
+                    policy = np.zeros(config.mcts.num_top_actions)
+                    policy[0] = 0.9
+                    policy[1:] = 0.1 / (config.mcts.num_top_actions - 1)
+                    pad_policies.append(policy)
 
+            # Apply padding to trajectory
             traj.pad_over(pad_obs, pad_rewards, pad_values, pad_values, pad_policies)
-
             
-
             traj.save_to_memory()
             
             # Save trajectory to buffer 
