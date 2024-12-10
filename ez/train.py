@@ -61,7 +61,7 @@ def start_ddp_trainer(rank, config):
     manager = None
     num_gpus = torch.cuda.device_count()
     num_cpus = multiprocessing.cpu_count()
-    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, object_store_memory=20 * 1024 * 1024 * 1024 if config.env.image_based else 20 * 1024 * 1024 * 1024)
+    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, object_store_memory=20 * 1024 * 1024 * 1024 if config.env.image_based else 36 * 1024 * 1024 * 1024)
     set_seed(config.env.base_seed + rank >= 0)              # set seed
     # set log
 

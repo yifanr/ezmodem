@@ -4,7 +4,7 @@ agent_name: dmc_image_agent
 # env setting
 env:
   env: DMC
-  game: walker_run
+  game: quadruped_run
   base_seed: 0
   n_skip: 2
   n_stack: 2
@@ -82,7 +82,7 @@ train:
   value_policy_detach: False
   optimal_Q: False
   v_num: 1
-  value_target: 'mixed'   # sarsa or search or mixed or max
+  value_target: 'sarsa'   # sarsa or search or mixed or max
   use_IQL: False
   IQL_weight: 0.5
   start_use_mix_training_steps: 4e4
@@ -91,8 +91,9 @@ train:
 # self-play data collection
 data:
   num_envs: 4
-  buffer_size: 200000      # 1 * 1000 * 1000
-  total_transitions: 200000 # 1000 * 1000
+  buffer_size: 150000      # 1 * 1000 * 1000
+  demo_buffer_size: 10000
+  total_transitions: 100000 # 1000 * 1000
   top_transitions: 2e5
   trajectory_size: 100   # prev 500
   save_video: False
@@ -164,4 +165,4 @@ actors:
 # wandb
 wandb:
   project: 'ez-v2-release'
-  tag: 'DMC-image'
+  tag: 'DMC-modem'

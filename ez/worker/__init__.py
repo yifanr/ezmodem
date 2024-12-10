@@ -47,11 +47,11 @@ def start_workers(agent: Agent, manager, config):
     if config.train.use_demo:
         # expert buffer server
         expert_buffer_server = ReplayBuffer.remote(batch_size=config.train.batch_size,
-                                                buffer_size=config.data.buffer_size, 
+                                                buffer_size=config.data.demo_buffer_size, 
                                                 top_transitions=config.data.top_transitions,
                                                 use_priority=config.priority.use_priority,
                                                 env=config.env.env,
-                                                total_transitions=config.data.total_transitions)
+                                                total_transitions=config.data.demo_buffer_size)
         print('[main process] Expert buffer server has been started from main process.')
 
         load_expert_buffer(config, expert_buffer_server, "./demonstrations")

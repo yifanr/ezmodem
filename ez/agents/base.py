@@ -74,8 +74,8 @@ class Agent:
         
         # Calculate training steps
         total_transitions = ray.get(expert_buffer.get_transition_num.remote())
-        steps_per_epoch = total_transitions // config.train.batch_size
-        total_steps = steps_per_epoch * 2  # 2x amount of data
+        steps_per_epoch = total_transitions // bc_batch_size
+        total_steps = steps_per_epoch * 64  # 64x amount of data
         
         print(f"Starting behavioral cloning pretraining for {total_steps} steps...")
         
@@ -100,8 +100,6 @@ class Agent:
             
             traj_lst = concat_trajs(config, traj_lst)
             
-            obs = ray.get(obs_lst[0])[0]  # Get first observation from first trajectory
-            
             # Process both observations and actions
             # if self.config.env.image_based:
             stacked_obs = []
@@ -114,8 +112,6 @@ class Agent:
                 # Get corresponding action
                 action = action_lst[b][pos]  # Get action at the same position
                 target_actions.append(action)
-
-            print(f"Batch obs shape: {np.array(stacked_obs).shape}")
 
             obs_batch = formalize_obs_lst(stacked_obs, config.env.image_based)
 
@@ -152,7 +148,7 @@ class Agent:
             scaler.step(optimizer)
             scaler.update()
 
-            if step % 10 == 0:
+            if step % 100 == 0:
                 print(f'Step {step}, Loss: {policy_loss.item():.4f}')
                 
         print("Behavioral cloning completed")
