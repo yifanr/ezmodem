@@ -4,7 +4,7 @@ agent_name: dmc_image_agent
 # env setting
 env:
   env: DMC
-  game: quadruped_run
+  game: humanoid_walk
   base_seed: 0
   n_skip: 2
   n_stack: 2
@@ -36,7 +36,7 @@ optimizer:
 
 # priority of data
 priority:
-  use_priority: True
+  use_priority: False
   expert_priority: 1.0
   priority_prob_alpha: 1.0  # prev 0.6
   priority_prob_beta: 1.0   # prev 0.4
@@ -122,7 +122,7 @@ model:
   down_sample: True
   state_norm: False
   value_prefix: False
-  value_target: bootstrapped # bootstrapped or GAE
+  value_target: GAE # bootstrapped or GAE
   GAE_max_steps: 15 # 10 or 15 or 20
   dynamic_type: None  # RNN or Transformer or None
   init_zero: True

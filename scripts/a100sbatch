@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:a100:1 
 #SBATCH --qos=a100_yifan
 #SBATCH --time=12:00:00
-#SBATCH -c 30
+#SBATCH -c 16
 #SBATCH --mem=64G
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err

@@ -210,6 +210,11 @@ class BatchWorker(Worker):
             # Unpack contexts
             traj_lst = []
             for i in range(len(online_context[0])):
+                # if i == 2:
+                #     # Print average rewards for both online and demo data
+                #     online_rewards = np.mean(online_context[0][i])
+                #     demo_rewards = np.mean(demo_context[0][i])
+                #     print(f"Online rewards: {online_rewards}, Demo rewards: {demo_rewards}")
                 # print(f"Item {i}:")
                 # print(f"  Online shape: {np.array(online_context[0][i]).shape}")
                 # print(f"  Demo shape: {np.array(demo_context[0][i]).shape}")

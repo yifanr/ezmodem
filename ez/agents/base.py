@@ -175,12 +175,16 @@ class Agent:
 
         # prepare model
         model = self.build_model().cuda()
+        target_model = self.build_model().cuda()
         
         if pretrained_weights is not None:
             model.load_state_dict(pretrained_weights)
+            target_model.load_state_dict(pretrained_weights)
             print("Using pretrained model from behavior cloning")
+            storage.set_weights.remote(pretrained_weights, 'self_play')
+            storage.set_weights.remote(pretrained_weights, 'reanalyze')
+            storage.set_weights.remote(pretrained_weights, 'latest')
             
-        target_model = self.build_model().cuda()
         # load model
         load_path = self.config.train.load_model_path
         if os.path.exists(load_path):
