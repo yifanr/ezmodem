@@ -19,6 +19,7 @@ from ez.eval import eval
 from ez.utils.loader import concat_trajs
 from ez.utils.format import formalize_obs_lst
 from ez.data.trajectory import GameTrajectory
+import torch.nn.functional as F
 
 
 # @ray.remote(num_gpus=0.05)
@@ -76,10 +77,24 @@ class EvalWorker(Worker):
                     
                     # Compute BC loss
                     if self.config.env.env in ['DMC', 'Gym']:
-                        bc_loss = F.mse_loss(
-                            policies[:, :policies.shape[-1] // 2],  # Mean of policy distribution
-                            action_batch
-                        )
+                        # Split policy outputs into mean and log_std
+                        action_dim = policies.shape[-1] // 2
+                        means = policies[:, :action_dim]
+                        log_stds = policies[:, action_dim:]
+                        
+                        # Create normal distribution
+                        dist = torch.distributions.Normal(means, torch.exp(log_stds))
+                        
+                        # Since your policy uses tanh squashing (based on the ValuePolicyNetwork forward method),
+                        # we need to account for this in the log likelihood calculation
+                        log_prob = dist.log_prob(torch.atanh(action_batch.clamp(-0.999, 0.999)))
+                        
+                        # Sum across action dimensions and add correction term for tanh squashing
+                        log_prob = log_prob.sum(dim=-1)
+                        log_prob -= torch.sum(torch.log(1 - action_batch.pow(2) + 1e-6), dim=-1)
+                        
+                        # Final loss (negative log likelihood)
+                        bc_loss = -log_prob.mean()
                     else:
                         bc_loss = F.cross_entropy(policies, action_batch.squeeze(-1))
                 
@@ -147,7 +162,7 @@ class EvalWorker(Worker):
 # ======================================================================================================================
 # eval worker
 # ======================================================================================================================
-def start_eval_worker(agent, replay_buffer, storage, config):
+def start_eval_worker(agent, replay_buffer, storage, config, expert_buffer=None):
     # start data worker
-    eval_worker = EvalWorker.remote(agent, replay_buffer, storage, config)
+    eval_worker = EvalWorker.remote(agent, replay_buffer, storage, config, expert_buffer=expert_buffer)
     eval_worker.run.remote()

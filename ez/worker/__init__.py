@@ -86,7 +86,7 @@ def start_workers(agent: Agent, manager, config):
     print('[main process] Batch workers have all been launched.')
 
     # eval worker
-    eval_worker = [start_eval_worker(agent, replay_buffer_server, storage_server, config)]
+    eval_worker = [start_eval_worker(agent, replay_buffer_server, storage_server, config, expert_buffer=expert_buffer_server)]
         
 
     if int(torch.__version__[0]) == 2:

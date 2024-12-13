@@ -130,10 +130,24 @@ class Agent:
                 
                 # Compute BC loss
                 if self.config.env.env in ['DMC', 'Gym']:
-                    policy_loss = F.mse_loss(
-                        policies[:, :policies.shape[-1] // 2],  # Mean of policy distribution
-                        action_batch
-                    )
+                    # Split policy outputs into mean and log_std
+                    action_dim = policies.shape[-1] // 2
+                    means = policies[:, :action_dim]
+                    log_stds = policies[:, action_dim:]
+                    
+                    # Create normal distribution
+                    dist = torch.distributions.Normal(means, torch.exp(log_stds))
+                    
+                    # Since your policy uses tanh squashing (based on the ValuePolicyNetwork forward method),
+                    # we need to account for this in the log likelihood calculation
+                    log_prob = dist.log_prob(torch.atanh(action_batch.clamp(-0.999, 0.999)))
+                    
+                    # Sum across action dimensions and add correction term for tanh squashing
+                    log_prob = log_prob.sum(dim=-1)
+                    log_prob -= torch.sum(torch.log(1 - action_batch.pow(2) + 1e-6), dim=-1)
+                    
+                    # Final loss (negative log likelihood)
+                    policy_loss = -log_prob.mean()
                 else:
                     policy_loss = F.cross_entropy(policies, action_batch.squeeze(-1))
             
