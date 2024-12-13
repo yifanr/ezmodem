@@ -48,6 +48,16 @@ def main(config):
         config.actors.batch_worker = 1
         config.data.num_envs = 1
 
+    if config.env.env == "Adroit":
+        if config.env.game == "adroit-hammer":
+            config.env.max_episode_steps = 125
+        elif config.env.game == "adroit-pen":
+            config.env.max_episode_steps = 50
+        elif config.env.game == "adroit-door":
+            config.env.max_episode_steps = 100
+        else:
+            raise ValueError(f'Invalid Adroit task "{config.env.game}"')
+
     if config.ddp.world_size > 1:
         mp.spawn(start_ddp_trainer, args=(config,), nprocs=config.ddp.world_size)
     else:

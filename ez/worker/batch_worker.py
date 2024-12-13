@@ -209,6 +209,8 @@ class BatchWorker(Worker):
         if online_context is not None and demo_context is not None:
             # Unpack contexts
             traj_lst = []
+            # Print average rewards for demo and online data
+            # print(f'Online rewards: {np.mean([np.mean([rewards]) for rewards in online_context[0][1]])}, Demo rewards: {np.mean([np.mean([rewards]) for rewards in demo_context[0][1]])}')
             for i in range(len(online_context[0])):
                 # if i == 2:
                 #     # Print average rewards for both online and demo data
