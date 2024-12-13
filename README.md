@@ -55,6 +55,8 @@ python ez/train.py exp_config=ez/config/exp/atari.yaml
 python ez/train.py exp_config=ez/config/exp/dmc_state.yaml
 # DMC image
 python ez/train.py exp_config=ez/config/exp/dmc_image.yaml
+# DMC image with expert demonstrations
+python ez/train.py exp_config=ez/config/exp/dmc_modem.yaml
 ```
 
 ### More Details
