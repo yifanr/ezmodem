@@ -99,8 +99,35 @@ def eval(agent, model, n_episodes, save_path, config, max_steps=None, use_pb=Fal
             import ipdb
             ipdb.set_trace()
 
-        # stack obs
-        current_stacked_obs = formalize_obs_lst(stack_obs_windows, image_based=config.env.image_based)
+        # Format stacked observations for batch inference
+        if config.env.image_based == 2:
+            # For hybrid case, we need to handle the nested structure
+            # stack_obs_windows is [[env0_obs_stack], [env1_obs_stack], ...]
+            # where each obs in the stack is {'image': ..., 'state': ...}
+            
+            # We need to create properly stacked observations for each environment
+            batch_obs = []
+            for env_idx in range(n_episodes):
+                # Get the stacked observations for this environment
+                env_stack = stack_obs_windows[env_idx]  # List of dicts
+                
+                # Create stacked image and state observations
+                stacked_images = [obs['image'] for obs in env_stack]
+                stacked_states = [obs['state'] for obs in env_stack]
+                
+                # Create the observation dict for this environment
+                env_obs = {
+                    'image': np.array(stacked_images),  # Shape: [n_stack, H, W, C]
+                    'state': np.array(stacked_states)   # Shape: [n_stack, state_dim]
+                }
+                batch_obs.append(env_obs)
+            
+            # Now format the batch observations
+            current_stacked_obs = formalize_obs_lst(batch_obs, image_based=config.env.image_based)
+        else:
+            # Original code for image-only or state-only cases
+            current_stacked_obs = formalize_obs_lst(stack_obs_windows, image_based=config.env.image_based)
+
         # obtain the statistics at current steps
         with torch.no_grad():
             with autocast():

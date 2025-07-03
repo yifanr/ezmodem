@@ -100,8 +100,28 @@ class DataWorker(Worker):
             # temperature
             temperature = self.agent.get_temperature(trained_steps=trained_steps) #* np.ones((num_envs, 1))
 
-            # stack obs
-            current_stacked_obs = formalize_obs_lst(stack_obs_windows, image_based=config.env.image_based)
+            # Format stacked observations for batch inference
+            if config.env.image_based == 2:
+                # For hybrid case, handle the nested structure properly
+                batch_obs = []
+                for env_idx in range(num_envs):
+                    env_stack = stack_obs_windows[env_idx]  # List of dicts
+                    
+                    # Create stacked image and state observations
+                    stacked_images = [obs['image'] for obs in env_stack]
+                    stacked_states = [obs['state'] for obs in env_stack]
+                    
+                    env_obs = {
+                        'image': np.array(stacked_images),
+                        'state': np.array(stacked_states)
+                    }
+                    batch_obs.append(env_obs)
+                
+                current_stacked_obs = formalize_obs_lst(batch_obs, image_based=config.env.image_based)
+            else:
+                # Original code for image-only or state-only cases
+                current_stacked_obs = formalize_obs_lst(stack_obs_windows, image_based=config.env.image_based)
+
             # obtain the statistics at current steps
             with autocast():
                 states, values, policies = self.model.initial_inference(current_stacked_obs)
