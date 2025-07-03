@@ -37,6 +37,9 @@ class GameTrajectory:
         self.image_based = kwargs.get('image_based')
         self.episodic = kwargs.get('episodic')
         self.GAE_max_steps = kwargs.get('GAE_max_steps')
+        
+        if self.image_based == 2:
+            self.state_lst = []
 
     def init(self, init_frames):
         assert len(init_frames) == self.n_stack
@@ -49,7 +52,11 @@ class GameTrajectory:
 
         # append a transition tuple
         self.action_lst.append(action)
-        self.obs_lst.append(obs)
+        if self.image_based == 2:
+            self.obs_lst.append(obs['image'])
+            self.state_lst.append(obs['state'])
+        else:
+            self.obs_lst.append(obs)
         self.reward_lst.append(reward)
 
     def pad_over(self, tail_obs, tail_rewards, tail_pred_values, tail_search_values, tail_policies):

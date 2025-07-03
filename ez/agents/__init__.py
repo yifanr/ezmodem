@@ -6,9 +6,11 @@
 from ez.agents.ez_atari import EZAtariAgent
 from ez.agents.ez_dmc_image import EZDMCImageAgent
 from ez.agents.ez_dmc_state import EZDMCStateAgent
+from ez.agents.ez_dmc_hybrid import EZDMCHybridAgent
 
 names = {
     'atari_agent': EZAtariAgent,
     'dmc_image_agent': EZDMCImageAgent,
     'dmc_state_agent': EZDMCStateAgent,
+    'dmc_hybrid_agent': EZDMCHybridAgent,
 }

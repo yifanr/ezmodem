@@ -4,15 +4,16 @@ agent_name: dmc_image_agent
 # env setting
 env:
   env: DMC
-  game: hopper_hop
+  game: humanoid_walk  
   base_seed: 0
   n_skip: 2
-  n_stack: 4
+  n_stack: 2
   max_episode_steps: 500
   gray_scale: False
-  image_based: True
+  image_based: 2 # 2 for hybrid mode, 1 for image, 0 for state
   clip_reward: False
-  obs_shape: [3, 96, 96]
+  obs_shape: [3, 224, 224]
+  state_shape: [64]
   episodic: False
 
 rl:
@@ -21,7 +22,6 @@ rl:
   td_steps: 5
   auto_td_steps: 30000  # prev 30000 for 100K env steps
   td_lambda: 0.95
-
 
 # optimizer
 optimizer:
@@ -36,7 +36,8 @@ optimizer:
 
 # priority of data
 priority:
-  use_priority: True
+  use_priority: False
+  expert_priority: 1.0
   priority_prob_alpha: 1.0  # prev 0.6
   priority_prob_beta: 1.0   # prev 0.4
   min_prior: 0.000001
@@ -44,13 +45,14 @@ priority:
 # training
 train:
   iterations: 6
+  use_demo: True
   demo_schedule: linear(0.75, 0.25, 50000)
-  
+
   load_model_path: ''
   batch_size: 256
-  training_steps: 200000        # 100 * 1000
+  training_steps: 100000        # 100 * 1000
   offline_training_steps: 20000     # 20 * 1000
-  start_transitions: 2000       # 2 * 1000
+  start_transitions: 5000       # 2 * 1000
 
   eval_n_episode: 10
   eval_interval: 5000
@@ -80,7 +82,7 @@ train:
   value_policy_detach: False
   optimal_Q: False
   v_num: 1
-  value_target: 'mixed'   # sarsa or search or mixed or max
+  value_target: 'sarsa'   # sarsa or search or mixed or max
   use_IQL: False
   IQL_weight: 0.5
   start_use_mix_training_steps: 4e4
@@ -89,8 +91,9 @@ train:
 # self-play data collection
 data:
   num_envs: 4
-  buffer_size: 200000      # 1 * 1000 * 1000
-  total_transitions: 200000 # 1000 * 1000
+  buffer_size: 150000      # 1 * 1000 * 1000
+  demo_buffer_size: 10000
+  total_transitions: 100000 # 1000 * 1000
   top_transitions: 2e5
   trajectory_size: 100   # prev 500
   save_video: False
@@ -119,7 +122,7 @@ model:
   down_sample: True
   state_norm: False
   value_prefix: False
-  value_target: bootstrapped # bootstrapped or GAE
+  value_target: GAE # bootstrapped or GAE
   GAE_max_steps: 15 # 10 or 15 or 20
   dynamic_type: None  # RNN or Transformer or None
   init_zero: True
@@ -156,10 +159,10 @@ model:
 
 # worker process allocation
 actors:
-  data_worker: 2
-  batch_worker: 8
+  data_worker: 1
+  batch_worker: 4
 
 # wandb
 wandb:
   project: 'ez-v2-release'
-  tag: 'DMC-image'
+  tag: 'DMC-modem'

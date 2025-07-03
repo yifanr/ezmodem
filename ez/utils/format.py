@@ -254,6 +254,19 @@ def formalize_obs_lst(obs_lst, image_based, already_prepare=False):
     # if not already_prepare:
     # obs_lst = prepare_obs_lst(obs_lst, image_based)
     obs_lst = np.asarray(obs_lst)
+
+    if image_based == 2:
+        image_obs = [obs['image'] for obs in obs_lst]
+        state_obs = [obs['state'] for obs in obs_lst]
+        
+        # Process images
+        image_batch = formalize_obs_lst(image_obs, image_based=True)
+        
+        # Process states  
+        state_batch = formalize_obs_lst(state_obs, image_based=False)
+        
+        return {'image': image_batch, 'state': state_batch}
+    
     if image_based:
         obs_lst = torch.from_numpy(obs_lst).cuda().float() / 255.
         obs_lst = torch.moveaxis(obs_lst, -1, 2)

@@ -172,6 +172,10 @@ def make_dmc(game_name, seed, save_path=None, **kwargs):
         # time_limit=max_episode_steps,
     )
 
+    if image_based == 2:
+        # hybrid mode, use proprioceptive state
+        env = HybridDMCWrapper(env, obs_shape=obs_shape, obs_to_string=obs_to_string, clip_reward=clip_reward)
+
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
 
     # save video to given

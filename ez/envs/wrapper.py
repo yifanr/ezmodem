@@ -90,7 +90,39 @@ class EpisodicLifeEnv(gym.Wrapper):
             obs, _, _, _ = self.env.step(0)
         self.lives = self.env.unwrapped.ale.lives()
         return obs
+    
 
+class HybridDMCWrapper(gym.Wrapper):
+    def __init__(self, env, obs_to_string=False, clip_reward=False):
+        super().__init__(env, obs_to_string, clip_reward)
+    
+    @property 
+    def state(self):
+        # Access underlying physics state
+        env = self.env
+        # Unwrap to get to the original DM Control environment
+        while hasattr(env, '_env') or hasattr(env, 'env'):
+            env = getattr(env, '_env', getattr(env, 'env', env))
+            if hasattr(env, 'task'):
+                break
+        
+        state = env.task.get_observation(env.physics)
+        state = np.concatenate([v.flatten() for v in state.values()])
+        return state.astype(np.float32)
+    
+    def step(self, action):
+        obs_image, reward, done, info = super().step(action)
+        obs_state = self.state
+        
+        # Return hybrid observation
+        obs = {'image': obs_image, 'state': obs_state}
+        return obs, reward, done, info
+    
+    def reset(self):
+        obs_image = super().reset()
+        obs_state = self.state
+        return {'image': obs_image, 'state': obs_state}
+    
 
 class MaxAndSkipEnv(gym.Wrapper):
     def __init__(self, env, skip=4):
