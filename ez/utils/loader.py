@@ -37,14 +37,17 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
     for demo_file in tqdm(demo_files):
         # Load demonstration data
         data = torch.load(demo_file)
+        print(data.keys())
         
         # Load frames
-        frames_dir = Path(os.path.dirname(demo_file)) / "frames"
-        frame_fps = [frames_dir / fn for fn in data["frames"]]
-        observations = np.stack([np.array(Image.open(fp)) for fp in frame_fps])
-        # if config.env.obs_to_string:
-        #     observations = np.array([arr_to_str(obs.astype(np.uint8)) for obs in observations])
-        # observations = observations.transpose(0, 3, 1, 2)
+        if config.env.image_based:
+            # Load frames for image-based observations
+            frames_dir = Path(os.path.dirname(demo_file)) / "frames"
+            frame_fps = [frames_dir / fn for fn in data["frames"]]
+            observations = np.stack([np.array(Image.open(fp)) for fp in frame_fps])
+        else:
+            # Use states directly for state-based observations
+            observations = np.array(data["states"])
         
         # Get state, actions, rewards
         state = torch.tensor(np.array(data["states"]), dtype=torch.float32)

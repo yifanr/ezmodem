@@ -71,7 +71,7 @@ def start_ddp_trainer(rank, config):
     manager = None
     num_gpus = torch.cuda.device_count()
     num_cpus = multiprocessing.cpu_count()
-    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, object_store_memory=80 * 1024 * 1024 * 1024 if config.env.image_based else 80 * 1024 * 1024 * 1024)
+    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, object_store_memory=20 * 1024 * 1024 * 1024 if config.env.image_based else 16 * 1024 * 1024 * 1024)
     set_seed(config.env.base_seed + rank >= 0)              # set seed
     # set log
 
@@ -118,7 +118,7 @@ def train(rank, agent: Agent, manager, logger, config):
         
 
     if config.ddp.training_size == 1:
-        final_weights, final_model = agent.train(rank, replay_buffer_server, storage_server, batch_storage, logger, pretrained_weights)
+        final_weights, final_model = agent.train(rank, replay_buffer_server, storage_server, batch_storage, logger, pretrained_weights=pretrained_weights, expert_buffer=expert_buffer)
     else:
         from ez.agents.base import train_ddp
         time.sleep(1)

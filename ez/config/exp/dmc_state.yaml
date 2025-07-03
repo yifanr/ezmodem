@@ -4,10 +4,10 @@ agent_name: dmc_state_agent
 # env setting
 env:
   env: DMC
-  game: hopper_hop
+  game: humanoid_walk
   base_seed: 0
   n_skip: 2
-  n_stack: 1
+  n_stack: 2
   max_episode_steps: 1000
   gray_scale: False
   image_based: False
@@ -42,6 +42,7 @@ priority:
 
 # training
 train:
+  use_demo: False
   load_model_path: ''
   batch_size: 256
   training_steps: 100000        # 100 * 1000

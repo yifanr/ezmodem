@@ -25,6 +25,7 @@ from ez.data.trajectory import GameTrajectory
 from ez.mcts.cy_mcts import Gumbel_MCTS
 from ez.data.replay_buffer import ReplayBuffer
 from ez.data.trajectory import GameTrajectory
+from pathlib import Path
 
 @ray.remote(num_gpus=0.03)
 # @ray.remote(num_gpus=0.14)
@@ -154,6 +155,7 @@ class BatchWorker(Worker):
             ray_time = self.make_batch(trained_steps, self.cnt)
             self.cnt += 1
             end_time = time.time()
+
             # if self.cnt % 100 == 0:
             #     print(f'make batch time={end_time-start_time:.3f}s, ray get time={ray_time:.3f}s')
 

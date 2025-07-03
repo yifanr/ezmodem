@@ -31,6 +31,7 @@ from ez.data.augmentation import Transforms
 from ez import mcts
 from ez.utils.format import formalize_obs_lst, prepare_obs_lst
 from ez.utils.loader import concat_trajs
+from ez.utils.visualization import compare_initial_trajectories
 
 def DDP_setup(**kwargs):
     # set master nod
@@ -70,12 +71,11 @@ class Agent:
         )
         
         # Use smaller batch size for BC
-        bc_batch_size = 32  # Much smaller than the 256 training batch size
+        bc_batch_size = 256  # may need to be smaller than usual?
         
         # Calculate training steps
         total_transitions = ray.get(expert_buffer.get_transition_num.remote())
-        steps_per_epoch = total_transitions // bc_batch_size
-        total_steps = steps_per_epoch * 64  # 64x amount of data
+        total_steps = total_transitions * 2  # 64x amount of data
         
         print(f"Starting behavioral cloning pretraining for {total_steps} steps...")
         
@@ -170,7 +170,7 @@ class Agent:
         return self.get_weights(model)
 
 
-    def train(self, rank, replay_buffer, storage, batch_storage, logger, pretrained_weights=None):
+    def train(self, rank, replay_buffer, storage, batch_storage, logger, pretrained_weights=None, expert_buffer=None):
         assert self._update
         # update image augmentation transform
         self.update_augmentation_transform()
@@ -254,6 +254,18 @@ class Agent:
             time.sleep(1)
             pass
         print('[Train] Begin training...')
+
+
+        # Compare initial collected data with expert demonstrations
+        save_dir = Path(self.config.save_path) / 'visualizations' / 'initial_data_comparison'
+        print("Comparing initial data with expert demonstrations...")
+        if self.config.train.use_demo and self.config.env.image_based:
+            expert_trajs, collected_trajs = compare_initial_trajectories(
+                self.config,
+                replay_buffer,
+                expert_buffer,
+                save_dir=save_dir
+            )
 
         # set signals for other workers
         if is_main_process:
@@ -881,6 +893,7 @@ def train_ddp(agent, rank, replay_buffer, storage, batch_storage, logger):
         time.sleep(1)
         pass
     print('[Train] Begin training...')
+
 
     # set signals for other workers
     if is_main_process:

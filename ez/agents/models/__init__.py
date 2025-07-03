@@ -91,8 +91,8 @@ class EfficientZero(nn.Module):
         else:
             return proj.detach()
 
-    def initial_inference(self, obs, training=False):
-        state = self.do_representation(obs)
+    def initial_inference(self, obs, state, training=False):
+        state = self.do_representation(obs) # concat proprioceptive state
         values, policy = self.do_value_policy_prediction(state)
 
         if training:
