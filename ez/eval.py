@@ -165,8 +165,19 @@ def eval(agent, model, n_episodes, save_path, config, max_steps=None, use_pb=Fal
 
             action = best_actions[i]
             obs, reward, done, info = envs[i].step(action)
-            frames[i].append(obs if config.env.image_based else envs[i].render(mode='rgb_array'))
-            # rewards[i].append(reward)
+            
+            # Handle frame collection for different observation modes
+            if config.env.image_based == 2:
+                # Hybrid mode: extract just the image for video
+                frame = obs['image']
+            elif config.env.image_based == 1:
+                # Image mode: use the observation directly
+                frame = obs
+            else:
+                # State mode: render the environment
+                frame = envs[i].render(mode='rgb_array')
+            
+            frames[i].append(frame)
             rewards[i].append(info['raw_reward'])
             dones[i] = done
 

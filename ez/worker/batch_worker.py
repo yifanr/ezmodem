@@ -547,7 +547,16 @@ class BatchWorker(Worker):
         # init
         value_obs_lst, td_steps_lst, value_mask = [], [], []  # mask: 0 -> out of traj
         policy_obs_lst, policy_mask = [], []
-        zero_obs = traj_lst[0].get_zero_obs(self.n_stack, channel_first=False)
+        
+        # Handle zero obs for both hybrid and standard modes
+        if self.image_based == 2:
+            # For hybrid mode, create zero observation dict
+            zero_obs = {
+                'image': traj_lst[0].get_zero_obs(self.n_stack, channel_first=False),
+                'state': [np.zeros(67) for _ in range(self.n_stack)]  # Use appropriate state dimension
+            }
+        else:
+            zero_obs = traj_lst[0].get_zero_obs(self.n_stack, channel_first=False)
 
         # get obs_{t+k}
         for traj, state_index, idx in zip(traj_lst, transition_pos_lst, indices_lst):
@@ -557,6 +566,7 @@ class BatchWorker(Worker):
             # prepare the corresponding observations for bootstrapped values o_{t+k}
             traj_obs = traj.get_index_stacked_obs(state_index + td_steps, extra=extra)
             game_obs = traj.get_index_stacked_obs(state_index, extra=extra)
+            
             for current_index in range(state_index, state_index + self.unroll_steps + 1 + extra):
                 bootstrap_index = current_index + td_steps
 
@@ -565,19 +575,39 @@ class BatchWorker(Worker):
                         value_mask.append(1)
                         beg_index = bootstrap_index - (state_index + td_steps)
                         end_index = beg_index + self.n_stack
-                        obs = traj_obs[beg_index:end_index]
+                        
+                        # Handle different observation types
+                        if self.image_based == 2:
+                            # Hybrid mode: extract from dict
+                            obs = {
+                                'image': traj_obs['image'][beg_index:end_index],
+                                'state': traj_obs['state'][beg_index:end_index]
+                            }
+                        else:
+                            # Standard mode: slice normally
+                            obs = traj_obs[beg_index:end_index]
                     else:
                         value_mask.append(0)
-                        obs = np.asarray(zero_obs)
+                        obs = zero_obs
                 else:
                     if bootstrap_index < traj_len:
                         value_mask.append(1)
                         beg_index = bootstrap_index - (state_index + td_steps)
                         end_index = beg_index + self.n_stack
-                        obs = traj_obs[beg_index:end_index]
+                        
+                        # Handle different observation types
+                        if self.image_based == 2:
+                            # Hybrid mode: extract from dict
+                            obs = {
+                                'image': traj_obs['image'][beg_index:end_index],
+                                'state': traj_obs['state'][beg_index:end_index]
+                            }
+                        else:
+                            # Standard mode: slice normally
+                            obs = traj_obs[beg_index:end_index]
                     else:
                         value_mask.append(0)
-                        obs = np.asarray(zero_obs)
+                        obs = zero_obs
 
                 value_obs_lst.append(obs)
                 td_steps_lst.append(td_steps)
@@ -586,24 +616,33 @@ class BatchWorker(Worker):
                     policy_mask.append(1)
                     beg_index = current_index - state_index
                     end_index = beg_index + self.n_stack
-                    obs = game_obs[beg_index:end_index]
+                    
+                    # Handle different observation types
+                    if self.image_based == 2:
+                        # Hybrid mode: extract from dict
+                        obs = {
+                            'image': game_obs['image'][beg_index:end_index],
+                            'state': game_obs['state'][beg_index:end_index]
+                        }
+                    else:
+                        # Standard mode: slice normally
+                        obs = game_obs[beg_index:end_index]
                 else:
                     policy_mask.append(0)
-                    obs = np.asarray(zero_obs)
+                    obs = zero_obs
                 policy_obs_lst.append(obs)
 
         # reanalyze the bootstrapped value v_{t+k}
         _, value_lst, _ = self.efficient_inference(value_obs_lst, only_value=True)
         state_lst, ori_cur_value_lst, policy_lst = self.efficient_inference(policy_obs_lst, only_value=False)
+        
         # v_{t+k}
         batch_size = len(value_lst)
         value_lst = value_lst.reshape(-1) * (np.array([self.discount for _ in range(batch_size)]) ** td_steps_lst)
         value_lst = value_lst * np.array(value_mask)
-        # value_lst = np.zeros_like(value_lst)  # for unit test, remove if training
         value_lst = value_lst.tolist()
 
         cur_value_lst = ori_cur_value_lst.reshape(-1) * np.array(policy_mask)
-        # cur_value_lst = np.zeros_like(cur_value_lst)    # for unit test, remove if training
         cur_value_lst = cur_value_lst.tolist()
 
         state_lst_cut, ori_cur_value_lst_cut, policy_lst_cut, policy_mask_cut = [], [], [], []
@@ -694,7 +733,7 @@ class BatchWorker(Worker):
 
         value_masks = np.asarray(value_masks)
         return np.asarray(batch_value_prefixes), np.asarray(batch_values), np.asarray(td_steps_lst).flatten(), \
-               (state_lst_cut, ori_cur_value_lst_cut, policy_lst_cut, policy_mask_cut), value_masks
+            (state_lst_cut, ori_cur_value_lst_cut, policy_lst_cut, policy_mask_cut), value_masks
 
 
     def prepare_reward(self, traj_lst, transition_pos_lst, indices_lst, collected_transitions, trained_steps):

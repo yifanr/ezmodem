@@ -31,8 +31,23 @@ class EZDMCHybridAgent(Agent):
         assert not self._update
 
         env = make_dmc(self.config.env.game, seed=0, save_path=None, **self.config.env)
+        
+        # Get actual state dimension from environment
+        if hasattr(env, 'state'):
+            # For hybrid environment, get the actual state size
+            actual_state_dim = env.state.shape[0]
+        else:
+            # Fallback to config if state property not available
+            from omegaconf import OmegaConf
+            state_shape_config = self.config.env.get('state_shape', [64])
+            if hasattr(state_shape_config, '_metadata'):
+                state_shape_config = OmegaConf.to_object(state_shape_config)
+            if isinstance(state_shape_config, (list, tuple)):
+                actual_state_dim = int(state_shape_config[0])
+            else:
+                actual_state_dim = int(state_shape_config)
+        
         action_space_size = env.action_space.shape[0]
-
         obs_channel = 1 if self.config.env.gray_scale else 3
 
         reward_support = DiscreteSupport(self.config)
@@ -49,6 +64,7 @@ class EZDMCHybridAgent(Agent):
         with open_dict(self.config):
             self.config.env.action_space_size = action_space_size
             self.config.env.obs_shape[0] = obs_channel
+            self.config.env.state_shape = [actual_state_dim]  # Update with actual state size
             self.config.rl.discount **= self.config.env.n_skip
             self.config.model.reward_support.size = reward_size
             self.config.model.value_support.size = value_size
@@ -59,6 +75,9 @@ class EZDMCHybridAgent(Agent):
         self.input_shape = copy.deepcopy(self.config.env.obs_shape)
         self.input_shape[0] *= self.config.env.n_stack
         self.action_space_size = self.config.env.action_space_size
+
+        # Store the actual state dimension for use in build_model
+        self.actual_state_dim = actual_state_dim
 
         self._update = True
 
@@ -71,19 +90,8 @@ class EZDMCHybridAgent(Agent):
         state_dim = state_shape[0] * state_shape[1] * state_shape[2]
         flatten_size = self.reduced_channels * state_shape[1] * state_shape[2]
 
-        # Get state dimension from config - handle OmegaConf objects properly
-        from omegaconf import OmegaConf
-        state_shape_config = self.config.env.get('state_shape', [64])
-        
-        # Convert OmegaConf to Python object first
-        if hasattr(state_shape_config, '_metadata'):  # It's an OmegaConf object
-            state_shape_config = OmegaConf.to_object(state_shape_config)
-        
-        # Extract the state dimension
-        if isinstance(state_shape_config, (list, tuple)):
-            state_input_dim = int(state_shape_config[0])
-        else:
-            state_input_dim = int(state_shape_config)
+        # Use the actual state dimension determined from environment
+        state_input_dim = self.actual_state_dim
         
         # Use hybrid representation network instead of standard one
         representation_model = HybridRepresentationNetwork(

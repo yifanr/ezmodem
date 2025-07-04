@@ -141,6 +141,8 @@ class ReplayBuffer:
     def split_trajs(self, traj_lst):
         obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
         bootstrapped_value_lsts, snapshot_lsts = [], [], [], [], [], [], [], []
+        state_lsts = []  # For hybrid mode
+        
         for traj in traj_lst:
             obs_lsts.append(traj.obs_lst)
             reward_lsts.append(traj.reward_lst)
@@ -150,8 +152,15 @@ class ReplayBuffer:
             search_value_lsts.append(traj.search_value_lst)
             bootstrapped_value_lsts.append(traj.bootstrapped_value_lst)
             snapshot_lsts.append(traj.snapshot_lst)
+            
+            # Include state_lst for hybrid mode
+            if hasattr(traj, 'state_lst'):
+                state_lsts.append(traj.state_lst)
+            else:
+                state_lsts.append(None)
+        
         return [obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts,
-                # snapshot_lsts
+                state_lsts  # Add state_lsts as 8th item
                 ]
 
     def update_root_values(self, batch_indices, search_values, transition_positions, unroll_steps):

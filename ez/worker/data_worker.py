@@ -256,7 +256,21 @@ class DataWorker(Worker):
             beg_index = self.config.env.n_stack
             end_index = beg_index + self.config.rl.unroll_steps
 
-            pad_obs_lst = game_trajs[idx].obs_lst[beg_index:end_index]
+            # Handle different observation modes
+            if self.config.env.image_based == 2:
+                # Hybrid mode: need to create list of dicts with 'image' and 'state'
+                pad_obs_lst = []
+                pad_image_lst = game_trajs[idx].obs_lst[beg_index:end_index]
+                pad_state_lst = game_trajs[idx].state_lst[beg_index:end_index]
+                
+                for img, state in zip(pad_image_lst, pad_state_lst):
+                    pad_obs_lst.append({
+                        'image': img,
+                        'state': state
+                    })
+            else:
+                # Standard mode (image-only or state-only)
+                pad_obs_lst = game_trajs[idx].obs_lst[beg_index:end_index]
 
             pad_policy_lst = game_trajs[idx].policy_lst[0:self.config.rl.unroll_steps]
             pad_reward_lst = game_trajs[idx].reward_lst[0:gap_step - 1]
@@ -265,7 +279,7 @@ class DataWorker(Worker):
 
             # pad over and save
             prev_game_trajs[idx].pad_over(pad_obs_lst, pad_reward_lst, pad_pred_values_lst, pad_search_values_lst,
-                                          pad_policy_lst)
+                                        pad_policy_lst)
         prev_game_trajs[idx].save_to_memory()
         self.put_trajs(prev_game_trajs[idx])
 

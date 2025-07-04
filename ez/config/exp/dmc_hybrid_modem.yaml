@@ -4,7 +4,7 @@ agent_name: dmc_hybrid_agent
 # env setting
 env:
   env: DMC
-  game: humanoid_walk  
+  game: humanoid_walk
   base_seed: 0
   n_skip: 2
   n_stack: 2
@@ -13,7 +13,7 @@ env:
   image_based: 2 # 2 for hybrid mode, 1 for image, 0 for state
   clip_reward: False
   obs_shape: [3, 224, 224]
-  state_shape: [64]  # Add proprioceptive state dimension
+  # state_shape: [67]  # Add proprioceptive state dimension
   episodic: False
 
 rl:

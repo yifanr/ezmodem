@@ -285,22 +285,20 @@ class GameTrajectory:
         unroll_steps = self.unroll_steps + extra
         
         if self.image_based == 2:
-            # Hybrid mode: return dict with stacked images and stacked states
-            # This mirrors how images and states are handled separately
+            # Hybrid mode: apply original simple approach to BOTH images and states
             
-            # Get stacked images (same as image-only case)
+            # Handle images - exactly like original
             frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(frames)
                 if pad_len > 0:
                     if len(frames) > 0:
                         pad_frames = [frames[-1] for _ in range(pad_len)]
-                        frames = np.concatenate((frames, pad_frames))
+                        frames = frames + pad_frames
                     else:
-                        # This shouldn't happen, but fallback
                         frames = []
             
-            # Get stacked states (same as state-only case)  
+            # Handle states - exactly like original (treat states like images)
             states = self.state_lst[index:index + self.n_stack + unroll_steps]
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(states)
@@ -309,27 +307,20 @@ class GameTrajectory:
                         pad_states = [states[-1] for _ in range(pad_len)]
                         states = states + pad_states
                     else:
-                        # Create zero states with appropriate dimension
-                        if len(self.state_lst) > 0:
-                            state_dim = self.state_lst[0].shape if hasattr(self.state_lst[0], 'shape') else len(self.state_lst[0])
-                            zero_state = np.zeros(state_dim)
-                        else:
-                            # Fallback dimension - this should be rare
-                            zero_state = np.zeros(64)  
-                        states = [zero_state for _ in range(self.n_stack + unroll_steps)]
+                        states = []
             
             # Return dict format for hybrid processing
             return {'image': frames, 'state': states}
             
         else:
-            # Standard mode (image-only or state-only) - unchanged
+            # Standard mode (image-only or state-only) - original approach
             frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(frames)
                 if pad_len > 0:
                     if len(frames) > 0:
                         pad_frames = [frames[-1] for _ in range(pad_len)]
-                        frames = np.concatenate((frames, pad_frames))
+                        frames = frames + pad_frames
                     else:
                         frames = []
                     

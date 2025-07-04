@@ -331,21 +331,19 @@ def prepare_obs_lst(obs_lst, image_based):
             state_obs = [obs['state'] for obs in obs_lst]
         else:
             # Handle case where obs_lst might be structured differently
-            # This shouldn't happen in normal flow, but good to be safe
             raise ValueError("Expected dict observations for hybrid mode")
         
-        # Prepare image component
+        # Prepare image component - original simple approach
         image_obs = np.asarray(image_obs)
         image_obs = np.moveaxis(image_obs, -1, 2)  # Move channel dimension
         image_shape = image_obs.shape
         image_obs = image_obs.reshape((image_shape[0], -1, image_shape[-2], image_shape[-1]))
         
-        # Prepare state component
+        # Prepare state component - original simple approach
         state_obs = np.asarray(state_obs)
         state_shape = state_obs.shape
-        if len(state_shape) > 2:
-            # Flatten state dimensions beyond batch and stack
-            state_obs = state_obs.reshape((state_shape[0], -1))
+        
+        obs_lst = obs_lst.reshape((state_shape[0], -1))
         
         # Return as dict to maintain structure
         return {'image': image_obs, 'state': state_obs}

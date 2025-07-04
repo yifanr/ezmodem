@@ -193,12 +193,18 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
     return expert_buffer
 
 def concat_trajs(config, items):
-    obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
-    bootstrapped_value_lsts = items
+    # Handle both old format (7 items) and new format (8 items with state_lsts)
+    if len(items) == 8:
+        obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
+        bootstrapped_value_lsts, state_lsts = items
+    else:
+        obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
+        bootstrapped_value_lsts = items
+        state_lsts = None
     
     traj_lst = []
-    for obs_lst, reward_lst, policy_lst, action_lst, pred_value_lst, search_value_lst, bootstrapped_value_lst in \
-        zip(obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts):
+    for i, (obs_lst, reward_lst, policy_lst, action_lst, pred_value_lst, search_value_lst, bootstrapped_value_lst) in \
+        enumerate(zip(obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts)):
         
         traj = GameTrajectory(
             n_stack=config.env.n_stack,
@@ -221,6 +227,14 @@ def concat_trajs(config, items):
         traj.pred_value_lst = pred_value_lst
         traj.search_value_lst = search_value_lst
         traj.bootstrapped_value_lst = bootstrapped_value_lst
+        
+        # Handle state_lst for hybrid mode
+        if state_lsts is not None and i < len(state_lsts) and state_lsts[i] is not None:
+            traj.state_lst = state_lsts[i]
+        elif config.env.image_based == 2:
+            # Initialize empty state_lst for hybrid mode if not provided
+            traj.state_lst = []
+                
         traj_lst.append(traj)
         
     return traj_lst
