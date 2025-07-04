@@ -54,10 +54,16 @@ class EfficientZero(nn.Module):
         self.v_num = config.train.v_num
 
     def do_representation(self, obs):
-        state = self.representation_model(obs)
+        """Updated to handle both standard and hybrid observations"""
+        if isinstance(obs, dict):
+            # Hybrid observation case
+            state = self.representation_model(obs)
+        else:
+            # Standard observation case  
+            state = self.representation_model(obs)
+            
         if self.state_norm:
             state = normalize_state(state)
-
         return state
 
     def do_dynamics(self, state, action):
@@ -91,13 +97,29 @@ class EfficientZero(nn.Module):
         else:
             return proj.detach()
 
-    def initial_inference(self, obs, state, training=False):
-        state = self.do_representation(obs) # concat proprioceptive state
-        values, policy = self.do_value_policy_prediction(state)
+    def initial_inference(self, obs, state=None, training=False):
+        """Updated to handle hybrid observations with optional state parameter"""
+        # Handle the case where obs is already a dict (hybrid) vs when state is passed separately
+        if isinstance(obs, dict):
+            # obs is already a hybrid dict with 'image' and 'state'
+            hybrid_obs = obs
+        elif state is not None:
+            # Construct hybrid observation from separate image and state
+            hybrid_obs = {'image': obs, 'state': state}
+        else:
+            # Standard single-modality observation
+            hybrid_obs = obs
+            
+        # Get representation
+        representation_state = self.do_representation(hybrid_obs)
+        
+        # Get value and policy predictions
+        values, policy = self.do_value_policy_prediction(representation_state)
 
         if training:
-            return state, values, policy
+            return representation_state, values, policy
 
+        # Handle value processing for inference
         if self.v_num > 2:
             values = values[np.random.choice(self.v_num, 2, replace=False)]
         if self.config.model.value_support.type == 'symlog':
@@ -108,7 +130,7 @@ class EfficientZero(nn.Module):
         if self.config.env.env in ['DMC', 'Gym']:
             output_values = output_values.clip(0, 1e5)
 
-        return state, output_values, policy
+        return representation_state, output_values, policy
 
 
     def recurrent_inference(self, state, action, reward_hidden, training=False):

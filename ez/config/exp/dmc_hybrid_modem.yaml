@@ -1,5 +1,5 @@
 # agent
-agent_name: dmc_image_agent
+agent_name: dmc_hybrid_agent
 
 # env setting
 env:
@@ -13,7 +13,7 @@ env:
   image_based: 2 # 2 for hybrid mode, 1 for image, 0 for state
   clip_reward: False
   obs_shape: [3, 224, 224]
-  state_shape: [64]
+  state_shape: [64]  # Add proprioceptive state dimension
   episodic: False
 
 rl:
@@ -138,6 +138,10 @@ model:
   lstm_horizon_len: 5
   value_ensumble: 1
 
+  # Hybrid model specific parameters
+  state_mapping:
+    hidden_dims: [256, 512]  # Hidden dimensions for state mapping network
+    
   policy_distribution: squashed_gaussian  # beta or squashed_gaussian or truncated_gaussian or discretized
   policy_loss_type: reanalyze  # policy_gradient or reanalyze
   policy_action_num: 4

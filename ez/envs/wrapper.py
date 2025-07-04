@@ -1,6 +1,7 @@
 import cv2
 import gym
 import numpy as np
+from .base import BaseWrapper  # Add this import
 
 
 class TimeLimit(gym.Wrapper):
@@ -92,9 +93,10 @@ class EpisodicLifeEnv(gym.Wrapper):
         return obs
     
 
-class HybridDMCWrapper(gym.Wrapper):
-    def __init__(self, env, obs_to_string=False, clip_reward=False):
-        super().__init__(env, obs_to_string, clip_reward)
+class HybridDMCWrapper(BaseWrapper):  # Change from gym.Wrapper to BaseWrapper
+    def __init__(self, env, obs_shape=None, obs_to_string=False, clip_reward=False):
+        super().__init__(env, obs_to_string, clip_reward)  # BaseWrapper handles these parameters correctly
+        self.obs_shape = obs_shape
     
     @property 
     def state(self):
@@ -118,8 +120,8 @@ class HybridDMCWrapper(gym.Wrapper):
         obs = {'image': obs_image, 'state': obs_state}
         return obs, reward, done, info
     
-    def reset(self):
-        obs_image = super().reset()
+    def reset(self, **kwargs):
+        obs_image = super().reset(**kwargs)
         obs_state = self.state
         return {'image': obs_image, 'state': obs_state}
     

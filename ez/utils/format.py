@@ -250,53 +250,118 @@ def str_to_arr(s, gray_scale=False):
     return arr
 
 
-def formalize_obs_lst(obs_lst, image_based, already_prepare=False):
-    # if not already_prepare:
-    # obs_lst = prepare_obs_lst(obs_lst, image_based)
-    obs_lst = np.asarray(obs_lst)
+# Update the formalize_obs_lst function in ez/utils/format.py
 
+def formalize_obs_lst(obs_lst, image_based, already_prepare=False):
+    """
+    Format observations for model input
+    
+    Args:
+        obs_lst: List of observations or prepared observation dict
+        image_based: 0=state only, 1=image only, 2=hybrid (image+state)
+        already_prepare: Whether observations are already prepared
+    
+    Returns:
+        Formatted observations ready for model input
+    """
+    
     if image_based == 2:
-        image_obs = [obs['image'] for obs in obs_lst]
-        state_obs = [obs['state'] for obs in obs_lst]
+        # Hybrid case: process both image and state components
+        if isinstance(obs_lst, dict):
+            # obs_lst is already prepared by prepare_obs_lst
+            image_obs = obs_lst['image']
+            state_obs = obs_lst['state']
+        elif isinstance(obs_lst[0], dict):
+            # obs_lst is a list of dicts with 'image' and 'state' keys (not prepared)
+            image_obs = [obs['image'] for obs in obs_lst]
+            state_obs = [obs['state'] for obs in obs_lst]
+            
+            # Need to prepare them first
+            image_obs = np.asarray(image_obs)
+            image_obs = np.moveaxis(image_obs, -1, 2)
+            image_shape = image_obs.shape
+            image_obs = image_obs.reshape((image_shape[0], -1, image_shape[-2], image_shape[-1]))
+            
+            state_obs = np.asarray(state_obs)
+            state_shape = state_obs.shape
+            if len(state_shape) > 2:
+                state_obs = state_obs.reshape((state_shape[0], -1))
+        else:
+            raise ValueError("Invalid observation format for hybrid mode")
         
-        # Process images
-        image_batch = formalize_obs_lst(image_obs, image_based=True)
-        
-        # Process states  
-        state_batch = formalize_obs_lst(state_obs, image_based=False)
+        # Convert to tensors
+        image_batch = torch.from_numpy(image_obs).cuda().float() / 255.
+        state_batch = torch.from_numpy(state_obs).cuda().float()
         
         return {'image': image_batch, 'state': state_batch}
     
-    if image_based:
-        obs_lst = torch.from_numpy(obs_lst).cuda().float() / 255.
-        obs_lst = torch.moveaxis(obs_lst, -1, 2)
-        shape = obs_lst.shape
-        obs_lst = obs_lst.reshape((shape[0], -1, shape[-2], shape[-1]))
     else:
-        obs_lst = torch.from_numpy(obs_lst).cuda().float()
-        shape = obs_lst.shape
-        obs_lst = obs_lst.reshape((shape[0], -1))
+        # Convert to numpy if not already
+        if not isinstance(obs_lst, np.ndarray):
+            obs_lst = np.asarray(obs_lst)
+            
+        if image_based:
+            # Image-only case
+            obs_lst = torch.from_numpy(obs_lst).cuda().float() / 255.
+            if len(obs_lst.shape) > 3:  # Only do moveaxis if not already prepared
+                obs_lst = torch.moveaxis(obs_lst, -1, 2)
+                shape = obs_lst.shape
+                obs_lst = obs_lst.reshape((shape[0], -1, shape[-2], shape[-1]))
+        else:
+            # State-only case
+            obs_lst = torch.from_numpy(obs_lst).cuda().float()
+            shape = obs_lst.shape
+            if len(shape) > 2:  # Only reshape if not already flattened
+                obs_lst = obs_lst.reshape((shape[0], -1))
+    
     return obs_lst
 
 
 def prepare_obs_lst(obs_lst, image_based):
-    """Prepare the observations to satisfy the input fomat of torch
-    [B, S, W, H, C] -> [B, S x C, W, H]
+    """Prepare the observations to satisfy the input format of torch
+    [B, S, W, H, C] -> [B, S x C, W, H] for images
+    [B, S, state_dim] -> [B, S x state_dim] for states
     batch, stack num, width, height, channel
     """
-    if image_based:
-        # B, S, W, H, C -> B, S x C, W, H
+    if image_based == 2:
+        # Hybrid case: handle both image and state components
+        if isinstance(obs_lst[0], dict):
+            # obs_lst is a list of dicts with 'image' and 'state' keys
+            image_obs = [obs['image'] for obs in obs_lst]
+            state_obs = [obs['state'] for obs in obs_lst]
+        else:
+            # Handle case where obs_lst might be structured differently
+            # This shouldn't happen in normal flow, but good to be safe
+            raise ValueError("Expected dict observations for hybrid mode")
+        
+        # Prepare image component
+        image_obs = np.asarray(image_obs)
+        image_obs = np.moveaxis(image_obs, -1, 2)  # Move channel dimension
+        image_shape = image_obs.shape
+        image_obs = image_obs.reshape((image_shape[0], -1, image_shape[-2], image_shape[-1]))
+        
+        # Prepare state component
+        state_obs = np.asarray(state_obs)
+        state_shape = state_obs.shape
+        if len(state_shape) > 2:
+            # Flatten state dimensions beyond batch and stack
+            state_obs = state_obs.reshape((state_shape[0], -1))
+        
+        # Return as dict to maintain structure
+        return {'image': image_obs, 'state': state_obs}
+        
+    elif image_based:
+        # Image-only case: B, S, W, H, C -> B, S x C, W, H
         obs_lst = np.asarray(obs_lst)
         obs_lst = np.moveaxis(obs_lst, -1, 2)
-
         shape = obs_lst.shape
         obs_lst = obs_lst.reshape((shape[0], -1, shape[-2], shape[-1]))
     else:
-        # B, S, H
+        # State-only case: B, S, H -> B, S x H
         obs_lst = np.asarray(obs_lst)
         shape = obs_lst.shape
         obs_lst = obs_lst.reshape((shape[0], -1))
-
+        
     return obs_lst
 
 

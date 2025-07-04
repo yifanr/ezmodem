@@ -100,29 +100,27 @@ class Agent:
             
             traj_lst = concat_trajs(config, traj_lst)
             
-            # Process both observations and actions
-            # if self.config.env.image_based:
+            # Process observations and actions based on mode
             stacked_obs = []
             target_actions = []
+            
             for b in range(len(obs_lst)):
                 pos = transition_pos_lst[b]
                 traj: GameTrajectory = traj_lst[b]
-                stacked_obs.append(traj.get_index_stacked_obs(pos, extra=-config.rl.unroll_steps, padding=True))
-                # print(f"Single stacked obs shape: {stacked_obs[-1].shape}")
+                
+                # Get stacked observations using the trajectory method
+                # This will return the appropriate format (list for standard, dict for hybrid)
+                obs_data = traj.get_index_stacked_obs(pos, extra=-config.rl.unroll_steps, padding=True)
+                stacked_obs.append(obs_data)
+                
                 # Get corresponding action
-                action = action_lst[b][pos]  # Get action at the same position
+                action = action_lst[b][pos]
                 target_actions.append(action)
 
+            # Format observations using the standard pipeline
+            # This handles the distinction between hybrid/image/state automatically
             obs_batch = formalize_obs_lst(stacked_obs, config.env.image_based)
-
-            # obs_batch = torch.from_numpy(np.array(stacked_obs)).cuda().float() / 255.
             action_batch = torch.from_numpy(np.array(target_actions)).float().cuda()
-                
-            # else:
-            #     obs_batch = torch.from_numpy(
-            #         np.array([ray.get(obs) for obs in obs_lst])
-            #     ).cuda().float()
-                
                 
             # Forward pass
             with torch.cuda.amp.autocast():

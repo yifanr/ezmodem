@@ -37,20 +37,18 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
     for demo_file in tqdm(demo_files):
         # Load demonstration data
         data = torch.load(demo_file)
-        print(data.keys())
         
-        # Load frames
+        # Load frames and states
         if config.env.image_based:
             # Load frames for image-based observations
             frames_dir = Path(os.path.dirname(demo_file)) / "frames"
             frame_fps = [frames_dir / fn for fn in data["frames"]]
-            observations = np.stack([np.array(Image.open(fp)) for fp in frame_fps])
+            image_observations = np.stack([np.array(Image.open(fp)) for fp in frame_fps])
         else:
-            # Use states directly for state-based observations
-            observations = np.array(data["states"])
+            image_observations = None
         
         # Get state, actions, rewards
-        state = torch.tensor(np.array(data["states"]), dtype=torch.float32)
+        state_observations = torch.tensor(np.array(data["states"]), dtype=torch.float32).numpy()
         
         # Handle different environments
         if config.env.env == "DMC":
@@ -62,6 +60,23 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
             ], dtype=np.float32) - 1.0)
             
         actions = np.array(data["actions"], dtype=np.float32).clip(-1, 1)
+        
+        # Create observations based on mode
+        if config.env.image_based == 2:
+            # Hybrid mode: create dict observations
+            observations = []
+            for i in range(len(state_observations)):
+                obs = {
+                    'image': image_observations[i],
+                    'state': state_observations[i]
+                }
+                observations.append(obs)
+        elif config.env.image_based == 1:
+            # Image-only mode
+            observations = image_observations
+        else:
+            # State-only mode
+            observations = state_observations
         
         # Split into multiple trajectories if needed
         for start_idx in range(0, len(actions), config.data.trajectory_size):
@@ -97,7 +112,6 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
                 traj.store_search_results(value_estimate, value_estimate, policy)
                 traj.snapshot_lst.append([])
 
-
             if config.model.value_target == 'bootstrapped':
                 extra = config.rl.td_steps
             else:
@@ -110,7 +124,19 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
 
             # Get padding data from next trajectory if available
             if end_idx + pad_length <= len(observations):
-                pad_obs = observations[end_idx:end_idx + config.rl.unroll_steps]
+                # Create appropriate padding observations
+                if config.env.image_based == 2:
+                    # Hybrid mode padding
+                    pad_obs = []
+                    for idx in range(end_idx, end_idx + config.rl.unroll_steps):
+                        pad_obs.append({
+                            'image': image_observations[idx],
+                            'state': state_observations[idx]
+                        })
+                else:
+                    # Regular padding
+                    pad_obs = observations[end_idx:end_idx + config.rl.unroll_steps]
+                    
                 pad_rewards = rewards[end_idx:end_idx + pad_length - 1]
                 
                 # Calculate value estimates for padding region
@@ -128,8 +154,18 @@ def load_expert_buffer(config, expert_buffer: ReplayBuffer, demo_dir):
 
             else:
                 # If we don't have enough future data, pad with zeros/last frame
-                last_obs = observations[end_idx - 1]
-                pad_obs = np.array([last_obs] * config.rl.unroll_steps)
+                if config.env.image_based == 2:
+                    # Hybrid mode padding
+                    last_obs = {
+                        'image': image_observations[end_idx - 1],
+                        'state': state_observations[end_idx - 1]
+                    }
+                    pad_obs = [last_obs] * config.rl.unroll_steps
+                else:
+                    # Regular padding
+                    last_obs = observations[end_idx - 1]
+                    pad_obs = np.array([last_obs] * config.rl.unroll_steps)
+                    
                 pad_rewards = np.zeros(pad_length - 1)
                 pad_values = np.zeros(pad_length)
                 

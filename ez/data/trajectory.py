@@ -38,25 +38,43 @@ class GameTrajectory:
         self.episodic = kwargs.get('episodic')
         self.GAE_max_steps = kwargs.get('GAE_max_steps')
         
+        # Initialize state_lst for hybrid mode
         if self.image_based == 2:
             self.state_lst = []
 
     def init(self, init_frames):
+        """Initialize trajectory with stacked observations"""
         assert len(init_frames) == self.n_stack
 
         for obs in init_frames:
-            self.obs_lst.append(copy.deepcopy(obs))
+            if self.image_based == 2:
+                # Hybrid mode: obs should be dict with 'image' and 'state'
+                if isinstance(obs, dict):
+                    self.obs_lst.append(copy.deepcopy(obs['image']))
+                    self.state_lst.append(copy.deepcopy(obs['state']))
+                else:
+                    raise ValueError(f"Expected dict observation for hybrid mode during init, got {type(obs)}")
+            else:
+                # Standard mode: obs is image or state directly
+                self.obs_lst.append(copy.deepcopy(obs))
 
     def append(self, action, obs, reward):
         assert self.__len__() <= self.max_size
 
         # append a transition tuple
         self.action_lst.append(action)
+        
         if self.image_based == 2:
-            self.obs_lst.append(obs['image'])
-            self.state_lst.append(obs['state'])
+            # Hybrid mode: obs should be a dict with 'image' and 'state' keys
+            if isinstance(obs, dict):
+                self.obs_lst.append(obs['image'])
+                self.state_lst.append(obs['state'])
+            else:
+                raise ValueError(f"Expected dict observation for hybrid mode, got {type(obs)}")
         else:
+            # Standard mode (image-only or state-only)
             self.obs_lst.append(obs)
+            
         self.reward_lst.append(reward)
 
     def pad_over(self, tail_obs, tail_rewards, tail_pred_values, tail_search_values, tail_policies):
@@ -79,13 +97,30 @@ class GameTrajectory:
         """
         assert len(tail_obs) <= self.unroll_steps
         assert len(tail_policies) <= self.unroll_steps
-        # assert len(tail_search_values) <= self.unroll_steps + self.td_steps
-        # assert len(tail_rewards) <= self.unroll_steps + self.td_steps - 1
 
-        # notice: next block observation should start from (stacked_observation - 1) in next trajectory
-        for obs in tail_obs:
-            self.obs_lst.append(copy.deepcopy(obs))
+        # Handle observations based on mode
+        if self.image_based == 2:
+            # Hybrid mode: tail_obs should be list of dicts or dict with lists
+            if len(tail_obs) > 0:
+                if isinstance(tail_obs, dict):
+                    # tail_obs is dict with 'image' and 'state' lists
+                    for img in tail_obs['image']:
+                        self.obs_lst.append(copy.deepcopy(img))
+                    for state in tail_obs['state']:
+                        self.state_lst.append(copy.deepcopy(state))
+                elif isinstance(tail_obs[0], dict):
+                    # tail_obs is list of dicts
+                    for obs in tail_obs:
+                        self.obs_lst.append(copy.deepcopy(obs['image']))
+                        self.state_lst.append(copy.deepcopy(obs['state']))
+                else:
+                    raise ValueError(f"Invalid tail_obs format for hybrid mode: {type(tail_obs)}")
+        else:
+            # Standard mode: tail_obs is list of observations
+            for obs in tail_obs:
+                self.obs_lst.append(copy.deepcopy(obs))
 
+        # Handle other components (same as before)
         for reward in tail_rewards:
             self.reward_lst.append(reward)
 
@@ -100,7 +135,6 @@ class GameTrajectory:
 
         # calculate bootstrapped value
         self.bootstrapped_value_lst = self.get_bootstrapped_value(value_type='prediction')
-        # calculate GAE value
 
     def save_to_memory(self):
         """
@@ -108,13 +142,16 @@ class GameTrajectory:
         """
         # convert to numpy
         self.obs_lst = ray.put(np.array(self.obs_lst))
-        # self.obs_lst = np.array(self.obs_lst)
         self.reward_lst = np.array(self.reward_lst)
         self.policy_lst = np.array(self.policy_lst)
         self.action_lst = np.array(self.action_lst)
         self.pred_value_lst = np.array(self.pred_value_lst)
         self.search_value_lst = np.array(self.search_value_lst)
         self.bootstrapped_value_lst = np.array(self.bootstrapped_value_lst)
+        
+        # Handle state_lst for hybrid mode
+        if self.image_based == 2:
+            self.state_lst = np.array(self.state_lst)
 
     def make_target(self, index):
         assert index < self.__len__()
@@ -241,35 +278,86 @@ class GameTrajectory:
         else:
             return np.array([np.ones(self.obs_shape, dtype=np.float32) for _ in range(n_stack)])
 
-    def get_current_stacked_obs(self):
-        # return the current stacked observation of correct format for model inference
-        index = len(self.reward_lst)
-        frames = ray.get(self.obs_lst)[index:index + self.n_stack]
-        # frames = self.obs_lst[index:index + self.n_stack]
-        if self.obs_to_string:
-            frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
-        return frames
-
     def get_index_stacked_obs(self, index, padding=False, extra=0):
         """To obtain an observation of correct format: o[t, t + stack frames + extra len]
-        Parameters
-        ----------
-        i: int
-            time step i
-        padding: bool
-            True -> padding frames if (t + stack frames) are out of trajectory
+        This mirrors the existing pattern for images/states but handles hybrid case
         """
         unroll_steps = self.unroll_steps + extra
-        frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
-        # frames = self.obs_lst[index:index + self.n_stack + unroll_steps]
-        if padding:
-            pad_len = self.n_stack + unroll_steps - len(frames)
-            if pad_len > 0:
-                pad_frames = [frames[-1] for _ in range(pad_len)]
-                frames = np.concatenate((frames, pad_frames))
-        if self.obs_to_string:
-            frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
-        return frames
+        
+        if self.image_based == 2:
+            # Hybrid mode: return dict with stacked images and stacked states
+            # This mirrors how images and states are handled separately
+            
+            # Get stacked images (same as image-only case)
+            frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
+            if padding:
+                pad_len = self.n_stack + unroll_steps - len(frames)
+                if pad_len > 0:
+                    if len(frames) > 0:
+                        pad_frames = [frames[-1] for _ in range(pad_len)]
+                        frames = np.concatenate((frames, pad_frames))
+                    else:
+                        # This shouldn't happen, but fallback
+                        frames = []
+            
+            # Get stacked states (same as state-only case)  
+            states = self.state_lst[index:index + self.n_stack + unroll_steps]
+            if padding:
+                pad_len = self.n_stack + unroll_steps - len(states)
+                if pad_len > 0:
+                    if len(states) > 0:
+                        pad_states = [states[-1] for _ in range(pad_len)]
+                        states = states + pad_states
+                    else:
+                        # Create zero states with appropriate dimension
+                        if len(self.state_lst) > 0:
+                            state_dim = self.state_lst[0].shape if hasattr(self.state_lst[0], 'shape') else len(self.state_lst[0])
+                            zero_state = np.zeros(state_dim)
+                        else:
+                            # Fallback dimension - this should be rare
+                            zero_state = np.zeros(64)  
+                        states = [zero_state for _ in range(self.n_stack + unroll_steps)]
+            
+            # Return dict format for hybrid processing
+            return {'image': frames, 'state': states}
+            
+        else:
+            # Standard mode (image-only or state-only) - unchanged
+            frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
+            if padding:
+                pad_len = self.n_stack + unroll_steps - len(frames)
+                if pad_len > 0:
+                    if len(frames) > 0:
+                        pad_frames = [frames[-1] for _ in range(pad_len)]
+                        frames = np.concatenate((frames, pad_frames))
+                    else:
+                        frames = []
+                    
+            if self.obs_to_string:
+                from ez.utils.format import str_to_arr
+                frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
+                
+            return frames
+
+    def get_current_stacked_obs(self):
+        """Return the current stacked observation - mirrors existing pattern"""
+        index = len(self.reward_lst)
+        
+        if self.image_based == 2:
+            # Hybrid mode: return dict with current stacked images and states
+            frames = ray.get(self.obs_lst)[index:index + self.n_stack]
+            states = self.state_lst[index:index + self.n_stack]
+            
+            return {'image': frames, 'state': states}
+        else:
+            # Standard mode - unchanged
+            frames = ray.get(self.obs_lst)[index:index + self.n_stack]
+            
+            if self.obs_to_string:
+                from ez.utils.format import str_to_arr
+                frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
+                
+            return frames
 
     def set_inf_len(self):
         self.max_size = 100000000

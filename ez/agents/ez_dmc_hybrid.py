@@ -1,8 +1,3 @@
-# Copyright (c) EVAR Lab, IIIS, Tsinghua University.
-#
-# This source code is licensed under the GNU License, Version 3.0
-# found in the LICENSE file in the root directory of this source tree.
-
 import time
 import copy
 import math
@@ -12,7 +7,7 @@ from omegaconf import open_dict
 from ez.envs import make_dmc
 from ez.utils.format import DiscreteSupport
 from ez.agents.models import EfficientZero
-from ez.agents.models.base_model import *
+from ez.agents.models.base_model import *  # This should include the new classes
 
 
 class EZDMCHybridAgent(Agent):
@@ -76,33 +71,64 @@ class EZDMCHybridAgent(Agent):
         state_dim = state_shape[0] * state_shape[1] * state_shape[2]
         flatten_size = self.reduced_channels * state_shape[1] * state_shape[2]
 
-        representation_model = RepresentationNetwork(self.input_shape, self.num_blocks, self.num_channels, self.down_sample)
+        # Get state dimension from config - handle OmegaConf objects properly
+        from omegaconf import OmegaConf
+        state_shape_config = self.config.env.get('state_shape', [64])
+        
+        # Convert OmegaConf to Python object first
+        if hasattr(state_shape_config, '_metadata'):  # It's an OmegaConf object
+            state_shape_config = OmegaConf.to_object(state_shape_config)
+        
+        # Extract the state dimension
+        if isinstance(state_shape_config, (list, tuple)):
+            state_input_dim = int(state_shape_config[0])
+        else:
+            state_input_dim = int(state_shape_config)
+        
+        # Use hybrid representation network instead of standard one
+        representation_model = HybridRepresentationNetwork(
+            observation_shape=self.obs_shape,
+            state_dim=state_input_dim,
+            num_blocks=self.num_blocks,
+            num_channels=self.num_channels,
+            downsample=self.down_sample,
+            n_stack=self.config.env.n_stack  # Pass n_stack for proper channel calculation
+        )
+        
         is_continuous = (self.config.env.env == "DMC")
         value_output_size = self.config.model.value_support.size if self.config.model.value_support.type != 'symlog' else 1
+        
         dynamics_model = DynamicsNetwork(
-                                self.num_blocks, 
-                                self.num_channels, 
-                                self.action_space_size, 
-                                is_continuous=is_continuous,
-                                state_size=(state_shape[1], state_shape[2]),  # Pass spatial dimensions
-                                action_embedding=self.config.model.action_embedding, 
-                                action_embedding_dim=self.action_embedding_dim
-                            )
-        value_policy_model = ValuePolicyNetwork(self.num_blocks, self.num_channels, self.reduced_channels, flatten_size,
-                                                     self.fc_layers, value_output_size,
-                                                     self.action_space_size * 2, self.init_zero, is_continuous,
-                                                     policy_distribution=self.config.model.policy_distribution,
-                                                     v_num=self.config.train.v_num)
+            self.num_blocks, 
+            self.num_channels, 
+            self.action_space_size, 
+            is_continuous=is_continuous,
+            state_size=(state_shape[1], state_shape[2]),  # Pass spatial dimensions
+            action_embedding=self.config.model.action_embedding, 
+            action_embedding_dim=self.action_embedding_dim
+        )
+        
+        value_policy_model = ValuePolicyNetwork(
+            self.num_blocks, self.num_channels, self.reduced_channels, flatten_size,
+            self.fc_layers, value_output_size,
+            self.action_space_size * 2, self.init_zero, is_continuous,
+            policy_distribution=self.config.model.policy_distribution,
+            v_num=self.config.train.v_num
+        )
 
         reward_output_size = self.config.model.reward_support.size if self.config.model.reward_support.type != 'symlog' else 1
         if self.value_prefix:
-            reward_prediction_model = SupportLSTMNetwork(0, self.num_channels, self.reduced_channels,
-                                                         flatten_size, self.fc_layers, reward_output_size,
-                                                         self.config.model.lstm_hidden_size, self.init_zero)
+            reward_prediction_model = SupportLSTMNetwork(
+                0, self.num_channels, self.reduced_channels,
+                flatten_size, self.fc_layers, reward_output_size,
+                self.config.model.lstm_hidden_size, self.init_zero
+            )
         else:
-            reward_prediction_model = SupportNetwork(self.num_blocks, self.num_channels, self.reduced_channels,
-                                                     flatten_size, self.fc_layers, reward_output_size,
-                                                     self.init_zero)
+            reward_prediction_model = SupportNetwork(
+                self.num_blocks, self.num_channels, self.reduced_channels,
+                flatten_size, self.fc_layers, reward_output_size,
+                self.init_zero
+            )
 
         projection_layers = self.config.model.projection_layers
         head_layers = self.config.model.prjection_head_layers
@@ -111,9 +137,10 @@ class EZDMCHybridAgent(Agent):
         projection_model = ProjectionNetwork(state_dim, projection_layers[0], projection_layers[1])
         projection_head_model = ProjectionHeadNetwork(projection_layers[1], head_layers[0], head_layers[1])
 
-        ez_model = EfficientZero(representation_model, dynamics_model, reward_prediction_model, value_policy_model,
-                                 projection_model, projection_head_model, self.config,
-                                 state_norm=self.state_norm, value_prefix=self.value_prefix)
+        ez_model = EfficientZero(
+            representation_model, dynamics_model, reward_prediction_model, value_policy_model,
+            projection_model, projection_head_model, self.config,
+            state_norm=self.state_norm, value_prefix=self.value_prefix
+        )
 
         return ez_model
-

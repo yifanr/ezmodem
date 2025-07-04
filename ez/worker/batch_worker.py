@@ -91,17 +91,26 @@ class BatchWorker(Worker):
 
 
     def concat_trajs(self, items):
-        obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
-        bootstrapped_value_lsts = items
+        # Handle both old format (7 items) and new format (8 items with state_lsts)
+        if len(items) == 8:
+            obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
+            bootstrapped_value_lsts, state_lsts = items
+        else:
+            obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, \
+            bootstrapped_value_lsts = items
+            state_lsts = None
+            
         traj_lst = []
-        for obs_lst, reward_lst, policy_lst, action_lst, pred_value_lst, search_value_lst, bootstrapped_value_lst in \
-                zip(obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts):
-            # traj = GameTrajectory(**self.config.env, **self.config.rl, **self.config.model)
+        for i, (obs_lst, reward_lst, policy_lst, action_lst, pred_value_lst, search_value_lst, bootstrapped_value_lst) in \
+            enumerate(zip(obs_lsts, reward_lsts, policy_lsts, action_lsts, pred_value_lsts, search_value_lsts, bootstrapped_value_lsts)):
+            
             traj = GameTrajectory(
-                n_stack=self.n_stack, discount=self.discount, gray_scale=self.gray_scale, unroll_steps=self.unroll_steps,
-                td_steps=self.td_steps, td_lambda=self.td_lambda, obs_shape=self.obs_shape, max_size=self.trajectory_size,
-                image_based=self.image_based, episodic=self.episodic, GAE_max_steps=self.GAE_max_steps
+                n_stack=self.n_stack, discount=self.discount, gray_scale=self.gray_scale, 
+                unroll_steps=self.unroll_steps, td_steps=self.td_steps, td_lambda=self.td_lambda, 
+                obs_shape=self.obs_shape, max_size=self.trajectory_size, image_based=self.image_based, 
+                episodic=self.episodic, GAE_max_steps=self.GAE_max_steps
             )
+            
             traj.obs_lst = obs_lst
             traj.reward_lst = reward_lst
             traj.policy_lst = policy_lst
@@ -109,7 +118,16 @@ class BatchWorker(Worker):
             traj.pred_value_lst = pred_value_lst
             traj.search_value_lst = search_value_lst
             traj.bootstrapped_value_lst = bootstrapped_value_lst
+            
+            # Handle state_lst for hybrid mode
+            if state_lsts is not None and i < len(state_lsts):
+                traj.state_lst = state_lsts[i]
+            elif self.image_based == 2:
+                # Initialize empty state_lst for hybrid mode if not provided
+                traj.state_lst = []
+                
             traj_lst.append(traj)
+            
         return traj_lst
 
     def run(self):

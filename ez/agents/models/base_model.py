@@ -65,6 +65,132 @@ class DownSample(nn.Module):
         return x
 
 
+class StateToImageNetwork(nn.Module):
+    """Maps proprioceptive state [B, state_dim] to image representation [B, C, H, W]"""
+    
+    def __init__(self, state_dim, target_channels, target_height, target_width, hidden_dims=[256, 512]):
+        super().__init__()
+        self.state_dim = state_dim
+        self.target_channels = target_channels
+        self.target_height = target_height
+        self.target_width = target_width
+        self.target_size = target_channels * target_height * target_width
+        
+        # Build MLP layers
+        layers = []
+        prev_dim = state_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU()
+            ])
+            prev_dim = hidden_dim
+            
+        # Final layer to target size
+        layers.append(nn.Linear(prev_dim, self.target_size))
+        
+        self.mlp = nn.Sequential(*layers)
+        
+        # Initialize final layer with small weights for stable addition
+        nn.init.xavier_uniform_(self.mlp[-1].weight, gain=0.1)
+        nn.init.zeros_(self.mlp[-1].bias)
+        
+    def forward(self, state):
+        """
+        Args:
+            state: [B, state_dim] proprioceptive state
+        Returns:
+            [B, C, H, W] mapped to image representation shape
+        """
+        batch_size = state.shape[0]
+        
+        # Pass through MLP
+        flat_output = self.mlp(state)
+        
+        # Reshape to image format
+        image_repr = flat_output.view(batch_size, self.target_channels, 
+                                    self.target_height, self.target_width)
+        
+        return image_repr
+
+
+class HybridRepresentationNetwork(nn.Module):
+    """Processes both image and state, combines them, then applies standard processing"""
+    
+    def __init__(self, observation_shape, state_dim, num_blocks, num_channels, downsample, n_stack):
+        super().__init__()
+        self.downsample = downsample
+        
+        # Calculate input channels for stacked images
+        input_channels = observation_shape[0] * n_stack  # Account for stacking: 3 * 2 = 6
+        
+        # Standard image representation network
+        if self.downsample:
+            self.downsample_net = DownSample(input_channels, num_channels)  # Use stacked channels
+            # Calculate downsampled dimensions
+            target_height = observation_shape[1] // 32  # Based on DownSample implementation
+            target_width = observation_shape[2] // 32
+        else:
+            self.conv = conv3x3(input_channels, num_channels)  # Use stacked channels
+            self.bn = nn.BatchNorm2d(num_channels)
+            target_height = observation_shape[1]
+            target_width = observation_shape[2]
+            
+        # State mapping network - account for stacked states
+        stacked_state_dim = state_dim * n_stack  # States are also stacked
+        self.state_mapper = StateToImageNetwork(
+            state_dim=stacked_state_dim,  # Use stacked state dimension
+            target_channels=num_channels,
+            target_height=target_height,
+            target_width=target_width
+        )
+        
+        # Shared residual blocks
+        self.resblocks = nn.ModuleList([
+            ResidualBlock(num_channels, num_channels) for _ in range(num_blocks)
+        ])
+        
+        # Fusion layer to combine modalities
+        self.fusion_conv = conv3x3(num_channels, num_channels)
+        self.fusion_bn = nn.BatchNorm2d(num_channels)
+        
+    def forward(self, hybrid_obs):
+        """
+        Args:
+            hybrid_obs: dict with 'image' [B, C*n_stack, H, W] and 'state' [B, state_dim*n_stack]
+        Returns:
+            [B, C, H, W] fused representation
+        """
+        image = hybrid_obs['image']
+        state = hybrid_obs['state']
+        
+        # Process image
+        if self.downsample:
+            image_repr = self.downsample_net(image)
+        else:
+            image_repr = self.conv(image)
+            image_repr = self.bn(image_repr)
+            image_repr = nn.functional.relu(image_repr)
+            
+        # Process state
+        state_repr = self.state_mapper(state)
+        
+        # Combine representations (element-wise addition)
+        combined = image_repr + state_repr
+        
+        # Apply fusion layer
+        fused = self.fusion_conv(combined)
+        fused = self.fusion_bn(fused)
+        fused = nn.functional.relu(fused)
+        
+        # Apply residual blocks
+        for block in self.resblocks:
+            fused = block(fused)
+            
+        return fused
+
 # Encode the observations into hidden states
 class RepresentationNetwork(nn.Module):
     def __init__(self, observation_shape, num_blocks, num_channels, downsample):
