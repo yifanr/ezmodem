@@ -292,22 +292,18 @@ class GameTrajectory:
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(frames)
                 if pad_len > 0:
-                    if len(frames) > 0:
-                        pad_frames = [frames[-1] for _ in range(pad_len)]
-                        frames = frames + pad_frames
-                    else:
-                        frames = []
+                    pad_frames = [frames[-1] for _ in range(pad_len)]
+                    frames = np.concatenate((frames, pad_frames))
+            if self.obs_to_string:
+                frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
             
             # Handle states - exactly like original (treat states like images)
             states = self.state_lst[index:index + self.n_stack + unroll_steps]
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(states)
                 if pad_len > 0:
-                    if len(states) > 0:
-                        pad_states = [states[-1] for _ in range(pad_len)]
-                        states = states + pad_states
-                    else:
-                        states = []
+                    pad_states = [states[-1] for _ in range(pad_len)]
+                    states = np.concatenate((states, pad_states))
             
             # Return dict format for hybrid processing
             return {'image': frames, 'state': states}
@@ -315,19 +311,14 @@ class GameTrajectory:
         else:
             # Standard mode (image-only or state-only) - original approach
             frames = ray.get(self.obs_lst)[index:index + self.n_stack + unroll_steps]
+            # frames = self.obs_lst[index:index + self.n_stack + unroll_steps]
             if padding:
                 pad_len = self.n_stack + unroll_steps - len(frames)
                 if pad_len > 0:
-                    if len(frames) > 0:
-                        pad_frames = [frames[-1] for _ in range(pad_len)]
-                        frames = frames + pad_frames
-                    else:
-                        frames = []
-                    
+                    pad_frames = [frames[-1] for _ in range(pad_len)]
+                    frames = np.concatenate((frames, pad_frames))
             if self.obs_to_string:
-                from ez.utils.format import str_to_arr
                 frames = [str_to_arr(obs, self.gray_scale) for obs in frames]
-                
             return frames
 
     def get_current_stacked_obs(self):
